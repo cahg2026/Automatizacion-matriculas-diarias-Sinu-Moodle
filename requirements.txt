@@ -1,0 +1,19 @@
+# Automatizacion Validacion Moodle vs SINU
+# Python 3.11
+
+# --- Fase 1: lectura y validacion del reporte ---
+openpyxl==3.1.5
+
+# --- Etapa 1: RPA sobre Power BI (SINU no tiene API publica) ---
+playwright==1.47.0
+
+# --- Etapas 2/5: Google Drive por navegador ---
+# No hay dependencias de Google: la organizacion no concede acceso a Google
+# Cloud Console, asi que Drive se maneja con RPA (playwright, arriba) sobre el
+# mismo perfil persistente de la etapa 1.
+
+# --- utilidades ---
+python-dotenv==1.0.1
+
+# --- desarrollo ---
+pytest==8.3.3
