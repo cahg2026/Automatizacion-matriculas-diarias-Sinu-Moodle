@@ -1,17 +1,30 @@
 ---
-name: cun-sigwt-matricula
-description: Familia de casos de uso para ajustes de matriculación en el Sistema académico de la CUN (sigwt.cun.edu.co/sgacampus/), cruzando un Excel de matrícula contra actividades del sistema para vincular/desvincular estudiantes a Moodle, y otros ajustes de matrícula que se irán agregando (integración masiva, cambios de grupo, cancelaciones, etc.). Usa esta skill siempre que el Sr. Niño mencione sigwt, sgacampus, el sistema académico de la CUN, vincular o desvincular estudiantes a Moodle, cargar un Excel de matrícula al sistema, códigos de actividad tipo ISEF07/ISEF05/PACF50, o pida repetir un proceso de "cédula por cédula" en el sistema académico. También aplica si solo dice "vamos a hacer lo de siempre en sigwt" o "carga el Excel de matrícula" sin más detalle — en ese caso confirma con el usuario cuál caso de uso de los de abajo aplica antes de arrancar.
----
+name: cun-matriculas-diarias
+description: Familia de casos de uso para la validación y ajuste de matriculación en el Sistema Académico de la CUN (sigwt.cun.edu.co/sgacampus/), cruzando reportes de Power BI y Exceles de matrícula contra Moodle y actividades de SINU (ISEF07, ISEF05, PACF50, ISEF88). Usa esta skill siempre que el Camila  mencione Matriuclas Diarias, sistema académico CUN, vinculación individual. Aplica también si pide ejecutar la extracción en Python, actualizar el reporte diario en Google Sheets, o procesar "cédula por cédula".
+
 
 # Ajustes de matriculación en sigwt (CUN) — familia de casos de uso
 
-Esta skill agrupa varios procesos que el Sr. Niño ejecuta en el Sistema académico de la CUN (`sigwt.cun.edu.co/sgacampus/`) para ajustar matrícula, casi siempre cruzando un Excel exportado del propio sistema contra una pantalla del sistema. Está pensada para crecer: cada caso de uso vive en su propio archivo dentro de `references/`, y este SKILL.md es solo el índice más las convenciones que todos los casos comparten. Así, agregar un caso nuevo no obliga a reescribir los anteriores.
+Esta skill agrupa los procedimientos operativos para la validación, vinculación y ajuste de matrículas estudiantiles entre Power BI, Google Sheets, el Sistema Académico SINU (sigwt.cun.edu.co/sgacampus/) y Moodle. Está pensada para crecer: cada caso de uso vive en su propio archivo dentro de `references/`, y este SKILL.md es solo el índice más las convenciones que todos los casos comparten. Así, agregar un caso nuevo no obliga a reescribir los anteriores.
+
+Entorno de Ejecución y Navegación Persistente
+Perfil Activo de Google Chrome: Todas las operaciones deben ejecutarse en la sesión persistente del navegador del usuario para mantener las credenciales autenticadas y las cookies de sesión activas.
+
+Navegación mediante Favoritos/Marcadores: El acceso a las plataformas se realiza exclusivamente desde la barra de marcadores guardados:
+
+Power BI: Marcador directo al workspace CUN Digital / Informe ValidacionMoodle (página MOODLE-VS-SINU-EST).
+
+Google Drive: Marcador directo a Compartidos conmigo → REPORTES 2026 → [Mes en curso].
+
+SINU (SIGWT): Marcador directo a sigwt.cun.edu.co/sgacampus/.
 
 ## Cómo usar esta skill
 
-1. Identifica qué caso de uso quiere el usuario (ver tabla abajo). Si no lo dice explícito, pregúntale — no asumas cuál de los procesos es, porque cada uno tiene su propio flujo de clics.
-2. Lee el archivo de `references/` correspondiente a ese caso. Ahí está el paso a paso detallado.
-3. Si el usuario describe un proceso que no está en la tabla, es un caso nuevo: síguelo con él paso a paso como una sesión de aprendizaje (igual que se hizo con vinculación individual), y al final documenta ese proceso en un archivo nuevo de `references/` para que quede disponible la próxima vez. Avísale que lo vas a guardar como un caso nuevo de esta misma skill, no como una skill aparte.
+dentifica qué caso de uso requiere el usuario (ver tabla de referencias).
+
+Abre y consulta la especificación detallada en el archivo references/ correspondiente.
+
+Si el proceso descrito es nuevo, ejecútalo en modo asistido paso a paso, documenta el flujo en un nuevo archivo dentro de references/ y registra la entrada en la tabla inferior.
 
 ## Casos de uso disponibles
 
@@ -28,7 +41,7 @@ Cuando se documente un caso nuevo, agrega una fila aquí apuntando a su archivo 
 Estas aplican a cualquier proceso dentro de sigwt, no solo a vinculación a Moodle:
 
 - **El sistema es un ERP académico con grillas asíncronas.** Cada búsqueda, selección o ejecución de acción puede tardar de 1 a 40 segundos en responder. No asumas que una acción terminó solo porque el clic se ejecutó — toma una captura, y si sigue en progreso (spinner, barra de progreso, contador de segundos subiendo), espera y vuelve a capturar. No dispares el siguiente paso encima de una carga en curso.
-- **El filtro de Periodo (arriba a la derecha) suele ser "de una sola vez"** al inicio de una sesión de trabajo, no por cada fila o estudiante — pero confírmalo para cada caso nuevo, porque no todas las pantallas del sistema funcionan igual.
+- **El filtro de Periodo (arriba a la derecha) suele ser "de una sola vez"** al inicio de una sesión de trabajo verificar segun el reporte de google sheett el primer periodo y lobuscas en sigwt para inicar la gestion se debe estar validando cada fila y tener encuenta que cuenta  que cuando cambie el periodo este tambien debera cambair el sigwt , no por cada fila o estudiante — pero confírmalo para cada caso nuevo, porque no todas las pantallas del sistema funcionan igual.
 - **Usa `browser_batch`** para agrupar clics/tecleo/capturas cuando el siguiente paso es predecible (limpiar un campo + escribir + Enter, por ejemplo), pero nunca agrupes un paso que depende de que el sistema termine de procesar algo — eso necesita su propia espera y captura.
 - **No inventes validaciones que no pidió el usuario.** Si dice que él valida al final con un reporte aparte, no te desvíes intentando confirmar checkboxes o estados por tu cuenta.
 - **Ante un resultado inesperado (cero o varias filas donde se esperaba una, un botón que no aparece, un mensaje de error), detente y avisa** en vez de adivinar — esto son ajustes reales de matrícula de estudiantes.
@@ -49,3 +62,4 @@ python3 scripts/extract_cedulas.py "<ruta al xlsx>" --sheet "<nombre hoja>" --co
 ```
 
 Es un helper genérico — sirve para cualquier caso de uso de esta familia que necesite recorrer cédulas del Excel, no solo para vinculación a Moodle.
+Árbol de Decisión Global y Marcado en Reporte (Google Sheets)CasoCondición en SINU (ISEF07)Verificación CruzadaAcción OperativaMarcado en Google SheetsCaso 1: Vinculación ExitosaCédula encontrada.Asignatura visible.Curso en moodle? = ✓Vinculado? = ☐N/ASeleccionar 1 Vincular grupos matriculados → Ejecutar engranaje → Confirmar modal OK.Fila en Verde ClaroColumna Validación = OKCaso 2: Grupo sin IntegraciónCédula encontrada.Curso en moodle? = ☐Consultar PACF50 e ISEF05 (confirmar falta de check Moodle?).No accionable desde ISEF07.Fila en Rojo ClaroColumna Validación = NO TIENE CHECK EN MOODLECaso 3: Sin Matrícula AcadémicaBúsqueda por cédula arroja 0 resultados.Consultar ISEF05, PACF50 e ISEF88 (Consulta de estudiantes).No accionable. El estudiante no posee matrícula en el periodo.Fila en LilaColumna Validación = NO CUENTA CON MATRÍCULA
