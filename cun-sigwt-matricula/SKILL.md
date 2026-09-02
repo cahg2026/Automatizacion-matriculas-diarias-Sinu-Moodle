@@ -62,4 +62,5 @@ python3 scripts/extract_cedulas.py "<ruta al xlsx>" --sheet "<nombre hoja>" --co
 ```
 
 Es un helper genérico — sirve para cualquier caso de uso de esta familia que necesite recorrer cédulas del Excel, no solo para vinculación a Moodle.
+
 Árbol de Decisión Global y Marcado en Reporte (Google Sheets)CasoCondición en SINU (ISEF07)Verificación CruzadaAcción OperativaMarcado en Google SheetsCaso 1: Vinculación ExitosaCédula encontrada.Asignatura visible.Curso en moodle? = ✓Vinculado? = ☐N/ASeleccionar 1 Vincular grupos matriculados → Ejecutar engranaje → Confirmar modal OK.Fila en Verde ClaroColumna Validación = OKCaso 2: Grupo sin IntegraciónCédula encontrada.Curso en moodle? = ☐Consultar PACF50 e ISEF05 (confirmar falta de check Moodle?).No accionable desde ISEF07.Fila en Rojo ClaroColumna Validación = NO TIENE CHECK EN MOODLECaso 3: Sin Matrícula AcadémicaBúsqueda por cédula arroja 0 resultados.Consultar ISEF05, PACF50 e ISEF88 (Consulta de estudiantes).No accionable. El estudiante no posee matrícula en el periodo.Fila en LilaColumna Validación = NO CUENTA CON MATRÍCULA
