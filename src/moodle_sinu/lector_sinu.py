@@ -607,6 +607,79 @@ def leer_filas_grupos(page: Page) -> tuple[list[FilaGrupoSinu], list[str]]:
 
 
 
+class MateriaNoEncontrada(ErrorLecturaSinu):
+    """El filtro por COD_MATERIA no dejo exactamente la materia buscada.
+
+    Se separa del resto porque la respuesta correcta es la misma que ante un
+    estudiante ambiguo: parar y avisar. Ejecutar con la grilla mostrando otra
+    cosa es como ejecutar sobre el estudiante equivocado.
+    """
+
+
+def filtrar_grupos_por_materia(
+    page: Page, cfg: Config, cod_materia: str
+) -> list[FilaGrupoSinu]:
+    """Acota la grilla Grupos a un COD_MATERIA. Devuelve las filas que quedan.
+
+    Es el paso que **confina la accion de ISEF07 a una sola asignatura**, y por
+    eso no es opcional. Sin el, "Vincular grupos matriculados" alcanza todas las
+    asignaturas del estudiante en el periodo: el 03/09/2026 eso reciclo 34
+    asignaturas cuando el reporte pedia 5.
+
+    Se filtra por `input[name="cod_materia"]`, que convive con el de la cedula y
+    tiene nombre estable (verificado el 24/08/2026). El comentario que decia que
+    COD_MATERIA "no es clave de busqueda aqui" venia de la referencia de negocio
+    y era falso; ver la correccion del 03/09/2026 en
+    `references/vinculacion-moodle.md`.
+
+    Raises:
+        ErrorLecturaSinu: si el filtro no se puede localizar.
+    """
+    exigir_modulo_legible(
+        ACTIVIDAD_VINCULACION, f"acotar la grilla Grupos a la materia {cod_materia}"
+    )
+    filtro = _exigir(
+        page.locator(sel.CSS_FILTRO_MATERIA),
+        cfg.timeout_operacion_seg,
+        "el filtro de la columna de materia de la grilla Grupos",
+    )
+    # `fill` y no triple clic, por lo mismo que en el filtro de cedula: la capa
+    # `isc_EH_screenSpan` de SmartClient intercepta los clics de puntero.
+    filtro.fill(cod_materia)
+    filtro.press("Enter")
+    esperar_sin_cargas(page, cfg)
+
+    pie = esperar_grilla_cargada(page, cfg)
+    if pie is not None:
+        log.info("Grupos acotada a %s: %s a %s de %s.", cod_materia, *pie)
+
+    filas, ilegibles = leer_filas_grupos(page)
+    if ilegibles:
+        raise MateriaNoEncontrada(
+            f"Al acotar a {cod_materia} quedaron {len(ilegibles)} filas con checks "
+            f"ilegibles: {ilegibles}. No se ejecuta a ciegas."
+        )
+    log.info("Grupos acotada a %s: %d fila(s).", cod_materia, len(filas))
+    return filas
+
+
+def limpiar_filtro_de_materia(page: Page, cfg: Config) -> None:
+    """Vacia el filtro de materia para volver a ver la grilla completa.
+
+    Hace falta para la comprobacion de desborde: hay que poder mirar TODAS las
+    asignaturas del estudiante despues de actuar sobre una.
+    """
+    filtro = _exigir(
+        page.locator(sel.CSS_FILTRO_MATERIA),
+        cfg.timeout_operacion_seg,
+        "el filtro de la columna de materia de la grilla Grupos",
+    )
+    filtro.fill("")
+    filtro.press("Enter")
+    esperar_sin_cargas(page, cfg)
+    esperar_grilla_cargada(page, cfg)
+
+
 def leer_estudiante(
     page: Page, cfg: Config, identificacion: str
 ) -> LecturaEstudiante:

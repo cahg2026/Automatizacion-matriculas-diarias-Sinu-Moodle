@@ -139,8 +139,14 @@ RX_VALOR_PERIODO = re.compile(r"^\s*\d{2}[A-Z]{1,2}\d{1,2}\s*$|^\s*\d{4}[A-Z]\s*
 # ---------------------------------------------------------------------------
 # Grilla "Estudiantes" (arriba)
 # ---------------------------------------------------------------------------
-# Se filtra SOLO por la columna de identificacion. COD_MATERIA no es clave de
-# busqueda en esta pantalla.
+# La grilla ESTUDIANTES se filtra por la columna de identificacion.
+#
+# OJO, esto decia que "COD_MATERIA no es clave de busqueda en esta pantalla" y
+# era FALSO. La grilla GRUPOS (abajo) si se filtra por `cod_materia`, y ese
+# filtro es el que confina la accion de ISEF07 a una sola asignatura.
+# COMPROBADO en produccion el 03/09/2026: "Grupos acotada a IED36: 1 a 1 de 1",
+# y tras desvincular y vincular ninguna otra asignatura del estudiante cambio.
+# Ver `filtrar_grupos_por_materia` en lector_sinu.
 
 RX_COLUMNA_IDENTIFICACION = re.compile(r"no\.?\s*identificaci[oó]n", re.IGNORECASE)
 

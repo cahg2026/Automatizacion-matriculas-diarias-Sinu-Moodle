@@ -13,10 +13,12 @@ Moodle vs. SINU de Power BI.
 |---|---|---|
 | — | **Fase 1** — parser + validación del `.xlsx` | ✅ Implementada y probada |
 | 1 | Exportación desde Power BI (Playwright) | ✅ Verificada end-to-end (21/08/2026), visible y headless |
-| 2 | Subida del Sheet a Drive (RPA, sin API) | ⚠️ Implementada — selectores sin verificar |
+| 2 | Subida del Sheet a Drive (RPA, sin API) | ✅ Verificada (03/09/2026) — **exige `--visible`**, ver *La subida no funciona sin ventana* |
 | 3a | Plan de trabajo (cédulas por periodo) | ✅ Implementado |
-| 3 | Clasificación de casos en SINU — **modo lectura** | ⚠️ Implementada — selectores sin verificar |
-| 4 | Ejecución en ISEF07 (vincular / reciclar) | ⚠️ Implementada — 3 cerrojos, selectores sin verificar |
+| 3 | Clasificación de casos en SINU — **modo lectura** | ✅ Verificada (01/09/2026): lectura real de la grilla Grupos |
+| 4 | Ejecución en ISEF07 (vincular / reciclar) | ✅ Verificada end-to-end (01/09/2026) — 3 cerrojos, `MODO_SIMULACION=false` |
+| 4b | Confirmación del check tras cada acción | ✅ Implementada (03/09/2026) — se relee la grilla, no se cree al diálogo |
+| 4c | Consulta automática de ISEF05/PACF50 + anotación en el Sheet | ⏳ **Falta** — los casos se detectan y se registran, resolverlos es manual |
 | 5 | Escritura de colores + validación en el Sheet | ⏳ |
 | 6 | Programación diaria (Task Scheduler) | ⏳ |
 
@@ -381,6 +383,28 @@ El id se lee de `https://drive.google.com/drive/folders/<ID>`.
 La sesión de Google vive en `POWERBI_PERFIL_NAVEGADOR`. Si caduca, la etapa 2
 aborta diciéndolo y se arregla ejecutando una vez con `--visible`.
 
+### La subida no funciona sin ventana
+
+**Comprobado el 03/09/2026** con dos corridas seguidas del mismo `flujo_dia.py`,
+mismo archivo y misma carpeta, cambiando *solo* el modo del navegador:
+
+| Modo | Resultado |
+|---|---|
+| `POWERBI_HEADLESS=true` (sin ventana) | `'REPORTE 03-09-2026 #198' no apareció en la carpeta tras 300s` |
+| `--visible` | Subió, convirtió a Sheet y siguió hasta ISEF07 sin tocar nada más |
+
+Lo engañoso es **cómo** falla: `expect_file_chooser` no da timeout y `set_files`
+se entrega sin error, así que parece que la subida arrancó. Lo que no ocurre
+nunca es que el archivo aparezca. Con ese síntoma es natural sospechar de los
+selectores de Drive — y no son los selectores.
+
+Ya había pasado el 01/09/2026 y se atribuyó a otra cosa: separar los dos clics
+(abrir *"Nuevo"* fuera del bloque `expect_file_chooser`) sigue siendo necesario,
+pero **no era la causa raíz** — la corrida que validó ese arreglo fue visible.
+
+**Regla:** la etapa 2 se ejecuta con `--visible`. Las etapas 1 (Power BI) y 4
+(SINU) sí funcionan sin ventana.
+
 ### Los selectores están SIN VERIFICAR
 
 A diferencia de la etapa 1, [`selectores_drive.py`](src/moodle_sinu/selectores_drive.py)
@@ -525,14 +549,55 @@ Regla de negocio (dueño del proceso, 21/08/2026), según `Vinculado?`:
 Es decir: lo ya vinculado se **recicla**, no se salta. Por eso
 `CASO_1_YA_VINCULADO` pasó de *no requerir acción* a requerirla.
 
-### Dos consecuencias que el código tiene en cuenta
+### Solo la materia del reporte — CORREGIDO el 03/09/2026
 
-**La acción es por estudiante, no por materia.** *"Vincular grupos matriculados"*
-actúa sobre todas las asignaturas del periodo a la vez; la grilla Grupos es
-informativa. Así que la regla se aplica al conjunto: **basta una materia
-vinculada para reciclar al estudiante completo**. El estado final es el buscado
-—todas vinculadas— pero el desvincular pasa también por materias que no lo
-necesitaban. Con esta pantalla no hay forma de hacerlo por materia.
+> Por la 07 únicamente se debe procesar, por estudiante, el código de la materia
+> que registre en el reporte. No otro, no todos, no algunos: únicamente el que
+> registre en el reporte.
+>
+> — dueño del proceso, 03/09/2026
+
+Hasta esa fecha aquí decía lo contrario: que la acción era *"por estudiante, no
+por materia"*, que alcanzaba todas las asignaturas del periodo a la vez, y que
+por tanto **bastaba una materia vinculada para reciclar al estudiante completo**.
+
+**Era falso.** Venía de una sola frase de
+[`references/vinculacion-moodle.md`](cun-sigwt-matricula/references/vinculacion-moodle.md)
+y se había copiado a ocho archivos. El 03/09/2026, en 5 estudiantes, hizo que se
+desvincularan y revincularan **34 asignaturas cuando correspondían 5**:
+
+| Cédula | Materia en el reporte | Asignaturas que tocó |
+|---|---|---|
+| 1000000009 | BMD01/20103 | 6 |
+| 1000000108 | IED36/30101 | 5 |
+| 1000000107 | IED36/30101 | 7 |
+| 1000000104 | IED36/30101 | 8 |
+| 1000000102 | IED36/30101 | 8 |
+
+Ninguna quedó rota —se verificó una por una—, pero el reporte no vigila esas
+materias, así que un fallo ahí habría pasado inadvertido. La referencia ya está
+corregida en su origen, y hay un test centinela
+(`test_la_premisa_falsa_no_ha_vuelto`) que falla si la frase reaparece como
+regla.
+
+**La unidad de trabajo es (cédula, materia):** una operación por fila del
+reporte. Antes de ejecutar, la grilla *Grupos* se acota por `COD_MATERIA` — ese
+paso es lo que confina la acción, y no es opcional.
+
+### Y una guarda, porque el confinamiento no está verificado
+
+Lo que **sí** está medido (03/09/2026) es que **sin acotar** la acción alcanza
+todas las asignaturas: `1000000102` pasó de 0 de 8 a 8 de 8 con una sola
+ejecución. Que acotar la grilla la confine lo afirma el dueño del proceso, pero
+nadie lo ha comprobado contra el sistema.
+
+Así que tras **cada** escritura se relee la grilla completa y se exige que
+ninguna otra asignatura haya cambiado (`AccionSeDesbordo`, constante
+`COMPROBAR_DESBORDE`). Si salta, se detiene la corrida entera con código 2.
+
+Sin esa guarda el código *parecería* trabajar por materia y seguiría haciendo el
+mismo daño, ahora invisible — que es peor que el estado anterior. Se puede apagar
+cuando el confinamiento esté confirmado en una pasada supervisada, y no antes.
 
 **El reciclado abre una ventana de riesgo.** Entre el desvincular y el vincular
 el estudiante queda **sin vincular**. Si el proceso muere ahí, acaba peor que al
@@ -548,6 +613,90 @@ empezar. De ahí tres medidas:
   código 1.
 - Al arrancar, el CLI avisa de reciclados sin cerrar de corridas anteriores.
 
+### La confirmación del check: releer, no creerle al diálogo
+
+Aclaración del dueño del proceso (03/09/2026), y es la regla que manda:
+
+> Cuando se desvincula a un estudiante, se le debe vincular nuevamente, ya que
+> ningún estudiante debe quedar desvinculado de ninguna de sus materias. […] Se
+> desvincula y **se espera a que quede confirmada la desvinculación**. Una vez se
+> tenga la confirmación, se vincula y **se espera a que quede vinculado** para
+> proceder con el siguiente.
+
+El diálogo *"Proceso terminado"* de ISEF07 **no** es esa confirmación: dice que
+el proceso corrió, no que la materia quedara vinculada. Son cosas distintas y la
+segunda es la que importa. Así que tras cada acción se vuelve a leer la grilla
+Grupos y se cuentan los checks **materia por materia**.
+
+Esto invalidó `VERIFICAR_CHECK_VINCULADO = False`, que venía de la referencia de
+negocio (*"no verificar el check fila por fila"*). Esa frase describe lo que la
+**persona** se ahorra cuando valida al final con un reporte aparte — no lo que
+el robot puede permitirse.
+
+| Desenlace | Qué significa | Qué hace el robot |
+|---|---|---|
+| Check confirmado | Todas las materias con `Vinculado?` | Cierra el ciclo y sigue |
+| `reciclado_incompleto` | El desvincular no se reflejó | Avisa y vincula igual (idempotente). **No hay daño**: el estudiante sigue vinculado |
+| `CheckNoConfirmado` | Se vinculó y el check no apareció, o ISEF07 no dejó vincular | **Escala** a ISEF05/PACF50. Cierra el ciclo o no, según lo de abajo |
+| `CicloAbierto` | No se pudo vincular ni confirmar tras desvincular | Lo peor: puede estar desvinculado. Sale con código 1 |
+
+Un fallo de **lectura** nunca abre un ciclo. Se separa a propósito: el
+01/09/2026 una alarma falsa dijo que un estudiante podía estar desvinculado y
+sus 7 asignaturas estaban intactas — y una alarma falsa en el único aviso que de
+verdad importa es peor que no tenerlo.
+
+### Una materia sin check no es siempre una urgencia
+
+`ciclos_abiertos.jsonl` existe para **una** cosa: avisar de estudiantes que
+quedaron *peor* que al empezar. Así que cuando el check no aparece hay que
+distinguir dos situaciones, y la pregunta es una sola: **¿perdió el estudiante
+algún vínculo que ya tenía?**
+
+| Situación | Ciclo | Escalado |
+|---|---|---|
+| Falta una materia que **ya venía sin check** | Se **cierra** — el estudiante está como estaba | Sí |
+| Falta una materia que **sí tenía check** al empezar | Queda **abierto** — hay que vincularla a mano | Sí |
+
+Sin esa distinción el aviso se convierte en ruido permanente:
+`reparar_desvinculados.py` recogería al estudiante en cada corrida para
+reintentar un vínculo que ISEF07 no puede hacer.
+
+**Comprobado en producción el 03/09/2026**, y el caso apareció en el 4.º
+estudiante de 69: `1000000104` (2026C) empezó con 7 de 8 vinculadas y acabó con
+7 de 8 — la que falta es `IED42/50101`, la misma. Con la primera versión de esta
+comprobación habría quedado marcado como *"puede haber quedado desvinculado"*
+para siempre. El escalado se registra en los dos casos: la materia sin check hay
+que validarla en ISEF05/PACF50 igual; lo que cambia es si además hay una
+urgencia de vinculación manual.
+
+### El escalado a ISEF05 y PACF50
+
+> Cuando en la 07 no se permite vincular, o si a pesar de haber vinculado este
+> no tiene el check, se procede a abrir la 05 y la 50 para realizar la
+> validación del check en Moodle y dejar registrada esta información en Google
+> Sheets.
+
+**Lo que está hecho:** el robot detecta el caso, reintenta el vincular
+`INTENTOS_HASTA_ESCALAR` veces, y lo anota en
+`logs/escalado_isef05_pacf50.jsonl` con la cédula, el periodo, el motivo y las
+asignaturas concretas que quedaron sin check. Al final de la corrida el CLI los
+lista aparte de los fallos, porque el siguiente paso es distinto: consultar, no
+reintentar. Estos casos **no** hacen fallar la corrida (código 0): son un
+desenlace previsto que necesita a una persona.
+
+**Lo que falta (4c):** abrir ISEF05 y PACF50 automáticamente y escribir el
+resultado en el Sheet. Hoy eso es manual. Los tres motivos que se registran:
+
+| Motivo | Origen |
+|---|---|
+| `isef07-no-permite-vincular` | El desplegable de acción no se pudo dejar puesto |
+| `vinculado-sin-check` | Se ejecutó el vincular y el check no apareció |
+| `check-no-verificable` | No se pudo releer la grilla, así que no se sabe |
+
+ISEF05 y PACF50 siguen siendo **solo lectura** en
+[`restricciones_sinu.py`](src/moodle_sinu/restricciones_sinu.py). El escalado no
+relaja esa barrera: se consultan, no se tocan.
+
 ### Tres cerrojos, hay que abrir los tres
 
 1. `MODO_SIMULACION=false` en `config/.env`
@@ -559,11 +708,15 @@ pasando `page=None`: en simulación no llega a tocar el navegador.
 
 ```powershell
 # Ensayo: recorre y reporta, no modifica nada
-.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py dataaweporte.xlsx `
+.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py data
+aw
+eporte.xlsx `
     --periodo 26V05 --limite 1 --visible --traza
 
 # Real (requiere MODO_SIMULACION=false)
-.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py dataaweporte.xlsx `
+.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py data
+aw
+eporte.xlsx `
     --periodo 26V05 --limite 1 --ejecutar-de-verdad --visible --traza
 ```
 
@@ -574,12 +727,15 @@ contiene el desplegable *"Acción a realizar"* y el botón de ejecutar. La etapa
 **no lo importa**, y hay tests que lo comprueban leyendo el código fuente: no
 puede pulsar lo que no sabe localizar.
 
-**Están sin verificar**, y uno es especialmente frágil: la referencia describe el
-botón de ejecutar como *"el primer icono (el de más arriba de tres, tipo
-engranaje) a la izquierda del desplegable"* — posicional y sin texto. Antes de
-usar la etapa 4 en real hay que grabar una pasada **consciente** sobre un
-estudiante de prueba: `grabar_sinu.ps1` avisa de no tocar esos controles porque
-está pensado para la etapa 3.
+**Verificados en real el 01/09/2026**, no por grabación sino por uso: 12
+estudiantes procesados en ISEF07, 12 ciclos cerrados. El que se temía frágil
+—el botón de ejecutar, que la referencia describe como *"el primer icono (el de
+más arriba de tres, tipo engranaje) a la izquierda del desplegable"*, posicional
+y sin texto— acabó localizándose por su imagen (`icon_start.png`) y funcionó en
+todas las corridas.
+
+Lo que sigue **sin verificar** es la etapa 2 (Drive): esos selectores no se han
+ejercitado contra la UI real.
 
 Antes de cada ejecución se comprueba que el desplegable quedó con la acción
 pedida, y se aborta si muestra otra: ejecutar con la acción equivocada es el
@@ -592,16 +748,20 @@ Fuente: [`cun-sigwt-matricula/SKILL.md`](cun-sigwt-matricula/SKILL.md) y
 Documentan el flujo tal como se ejecuta a mano, e introdujeron **tres
 correcciones al diseño** que no se deducían del reporte.
 
-### 1. La unidad de trabajo es el estudiante, no la fila
+### 1. La unidad de trabajo es (cédula, materia), no el estudiante
 
-El reporte trae **una fila por asignatura matriculada**, pero
-*"Vincular grupos matriculados"* de ISEF07 actúa sobre el estudiante completo:
-vincula de golpe **todas** sus asignaturas del periodo activo. Procesar por fila
-repetiría el mismo estudiante una vez por materia, y cada repetición cuesta
-15-40 s.
+El reporte trae **una fila por asignatura matriculada**, y cada fila es una
+operación: se acota la grilla *Grupos* a ese `COD_MATERIA` y se actúa solo sobre
+él.
 
-Medido sobre el reporte del 21/08/2026: **164 filas procesables → 84
-operaciones** (12 estudiantes traen más de una asignatura, hasta 8).
+Esta regla decía justo lo contrario hasta el 03/09/2026 — que la unidad era el
+estudiante, porque un solo *vincular* cubría todas sus asignaturas. Agrupar por
+cédula era precisamente lo que hacía perder la materia de vista. Ver
+*Solo la materia del reporte* en la etapa 4.
+
+Coste del cambio: un estudiante con varias filas ahora cuesta una pasada por
+fila. Sobre el reporte del 21/08/2026 eran **164 filas procesables → 84
+operaciones** agrupando; sin agrupar son 164.
 
 En ISEF07 la grilla *Estudiantes* se filtra **solo** por `No. Identificación`:
 `COD_MATERIA` no es clave de búsqueda ahí, al contrario de lo que suponía
@@ -966,10 +1126,16 @@ moodle-sinu-automation/
 
 - Credenciales solo en `config/.env`, ignorado por Git. **No hay credenciales
   de Google**: la sesión de Drive vive en el perfil del navegador.
+- El patrón de `.gitignore` es `config/.env*` con `!config/.env.example`, **no**
+  el nombre exacto `config/.env`. La razón: el 02/09/2026 un
+  `config/.env.respaldo_20260901` se coló en el primer commit y llegó a GitHub
+  con las contraseñas dentro, porque el patrón estrecho no lo cubría. Cualquier
+  respaldo del `.env` queda ahora ignorado por construcción.
 - `data/` y `logs/` están ignorados: contienen datos personales de estudiantes.
-- `MODO_SIMULACION=true` por defecto — la acción irreversible
-  "Vincular grupos matriculados" no se ejecuta hasta que la clasificación
-  de casos esté validada contra revisión manual.
+- `MODO_SIMULACION=true` en la **plantilla**, para que una copia recién hecha no
+  pueda escribir sin que alguien lo decida. En **esta** máquina está en `false`
+  desde el 01/09/2026: la etapa 4 ya ejecuta de verdad. Siguen haciendo falta
+  `--ejecutar-de-verdad` y `--periodo`.
 - Las grabaciones de `playwright codegen` (`*_grabado.py`) llevan credenciales
   en texto plano. Se borran tras extraer los selectores y se rota la contraseña
   usada.
