@@ -42,7 +42,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 from moodle_sinu import registro  # noqa: E402
-from moodle_sinu import selectores_sinu_escritura as sesc  # noqa: E402
 from moodle_sinu.acceso_sinu import ErrorAccesoSinu, abrir_y_acceder  # noqa: E402
 from moodle_sinu.config import Config, asegurar_directorios  # noqa: E402
 from moodle_sinu.constantes_sinu import ACTIVIDAD_VINCULACION  # noqa: E402

@@ -26,6 +26,7 @@ un selector no casa, se aborta con el nombre del paso en vez de seguir a ciegas.
 
 from __future__ import annotations
 
+import base64
 import logging
 import shutil
 import time
@@ -54,7 +55,6 @@ from .convencion_drive import (
     nombre_mes_anterior,
     nombre_reporte,
     reportes_desde_nombres,
-    siguiente_consecutivo,
 )
 from .navegador import abrir_contexto
 
@@ -93,6 +93,15 @@ class ResultadoSubida:
     advertencias: list[str] = field(default_factory=list)
     traza: Path | None = None
     capturas: list[Path] = field(default_factory=list)
+
+
+#: Sufijo con el que se aparta un reporte al reemplazarlo. Lleva la palabra
+#: "sin gestion" porque eso es lo que lo distingue del nuevo: el anterior es el
+#: reporte tal cual salio de Power BI, sin el verde/rojo de la etapa 4.
+#: Importa que NO encaje con `RX_NOMBRE_REPORTE`: si encajara, el apartado
+#: seguiria contando como "el reporte de ese dia" y la guarda de duplicados
+#: volveria a saltar en la siguiente subida.
+SUFIJO_APARTADO = "(sin gestion)"
 
 
 def _ms(segundos: float) -> float:
@@ -567,19 +576,98 @@ def _leer_consecutivo(
 # ---------------------------------------------------------------------------
 
 
-def _subir_archivo(page: Page, cfg: Config, archivo: Path, id_carpeta: str) -> None:
-    """Nuevo -> Subir archivo, resolviendo el dialogo del sistema.
+#: MIME del .xlsx, para el `File` que se construye en la pagina.
+MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-    Se intercepta el selector de archivos con `expect_file_chooser` en vez de
-    buscar el `input[type=file]` oculto de Drive: es la via soportada por
-    Playwright y no depende del DOM interno.
+#: Construye un File dentro de la pagina y lo suelta sobre la rejilla.
+#:
+#: Es la via que SI funciona. Ver `_subir_por_drop`.
+_GUION_DROP = """
+async ({b64, nombre, mime}) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const file = new File([bytes], nombre, {type: mime});
+
+  const dt = new DataTransfer();
+  dt.items.add(file);
+
+  const destino =
+    document.querySelector('[role=grid]') ||
+    document.querySelector('c-wiz') ||
+    document.body;
+
+  const opciones = {bubbles: true, cancelable: true, composed: true};
+  for (const tipo of ['dragenter', 'dragover']) {
+    destino.dispatchEvent(new DragEvent(tipo, {...opciones, dataTransfer: dt}));
+  }
+  destino.dispatchEvent(new DragEvent('drop', {...opciones, dataTransfer: dt}));
+  return {nombre: file.name, bytes: file.size, destino: destino.tagName};
+}
+"""
+
+
+def _subir_por_drop(page: Page, cfg: Config, archivo: Path, id_carpeta: str) -> None:
+    """Sube soltando el archivo sobre la rejilla, no por el selector de archivos.
+
+    Por que este es el metodo PRINCIPAL desde el 04/09/2026
+    ------------------------------------------------------
+    Drive **no tiene ningun `<input type=file>` en el DOM**: comprobado, 0
+    elementos en la pagina de una carpeta. Lo crea por JS al pulsar "Subir
+    archivo", lo consume y lo descarta.
+
+    Por eso `expect_file_chooser` enganaba: no daba timeout, `set_files` se
+    entregaba sin error, y el JS de Drive nunca recibia el `change` que espera.
+    La traza del 04/09/2026 lo dejo claro -- **ni una peticion de red de subida
+    en 300 s**, con la rejilla clavada en sus 3 filas. Cuatro intentos, cuatro
+    fallos; y el 03/09 acerto 1 de 3, que es lo que hacia parecer que el
+    problema era el modo del navegador.
+
+    El drop no depende de ese input: se construyen los bytes en la propia
+    pagina. Subio en **6 segundos** el archivo que llevaba 300 sin aparecer.
+    """
+    _exigir_dentro_de(page, id_carpeta, "soltar el archivo")
+    b64 = base64.b64encode(archivo.read_bytes()).decode("ascii")
+    res = page.evaluate(
+        _GUION_DROP, {"b64": b64, "nombre": archivo.name, "mime": MIME_XLSX}
+    )
+    log.info(
+        "Drop despachado: %s (%s bytes) sobre <%s>.",
+        res.get("nombre"),
+        res.get("bytes"),
+        res.get("destino"),
+    )
+
+
+def _subir_archivo(page: Page, cfg: Config, archivo: Path, id_carpeta: str) -> None:
+    """Sube el archivo a la carpeta que la UI este mostrando.
+
+    Dos vias, y el orden importa:
+
+    1. **Drop** (`_subir_por_drop`) -- la que funciona. Ver alli el porque.
+    2. Nuevo -> Subir archivo con `expect_file_chooser`, de reserva. Se
+       conserva porque el dia que Drive cambie su JS de drag-and-drop, el menu
+       seguira estando; pero no es de fiar como principal.
 
     Drive sube a la carpeta que la UI este mostrando, asi que se exige estar
-    dentro de la correcta ANTES de abrir el dialogo: es lo que evita dejar el
-    archivo en 'Mi unidad'.
+    dentro de la correcta ANTES de tocar nada: es lo que evita dejar el archivo
+    en 'Mi unidad'.
     """
     _exigir_dentro_de(page, id_carpeta, "subir el archivo")
     log.info("Subiendo %s a la carpeta %s", archivo.name, id_carpeta)
+
+    try:
+        _subir_por_drop(page, cfg, archivo, id_carpeta)
+        _esperar_fin_de_subida(page, cfg, archivo, id_carpeta)
+        return
+    except (ErrorSubidaDrive, ErrorPlaywright) as exc:
+        log.warning(
+            "El drop no completo la subida (%s); se reintenta por el menu "
+            "'Subir archivo'.",
+            str(exc).splitlines()[0][:120],
+        )
+        _abrir_carpeta(page, id_carpeta, cfg, "la carpeta destino (reintento)")
+        _exigir_dentro_de(page, id_carpeta, "subir el archivo por el menu")
 
     # El menu se abre FUERA del `expect_file_chooser`, y dentro del bloque queda
     # solo el clic que de verdad abre el dialogo.
@@ -884,6 +972,7 @@ def subir_reporte(
     headless: bool | None = None,
     con_traza: bool = False,
     abrir_al_terminar: bool = True,
+    reemplazar: bool = False,
     context: BrowserContext | None = None,
 ) -> ResultadoSubida:
     """Sube el .xlsx validado a Drive con la convencion acordada.
@@ -896,6 +985,10 @@ def subir_reporte(
             se puede deducir, se aborta en vez de arrancar en #1.
         headless: fuerza el modo del navegador.
         con_traza: guarda traza de Playwright en `logs/`.
+        reemplazar: si ya hay un reporte de esa fecha, lo **aparta** (lo
+            renombra con un sufijo) en vez de abortar, de modo que el nombre
+            canonico pase al nuevo. No borra nada: el anterior sigue en Drive y
+            su enlace sigue funcionando, porque las URL van por id.
         context: contexto de navegador ya abierto. Si se pasa, esta funcion NO
             lo crea ni lo cierra: lo gestiona quien llama. Es lo que permite que
             la pestana del Sheet siga abierta al pasar a SINU, porque ambas
@@ -953,12 +1046,47 @@ def subir_reporte(
             # 3. Consecutivo, leyendo mes actual y anterior.
             reportes = _leer_consecutivo(page, cfg, fecha, id_raiz, advertencias)
             del_dia = [r for r in reportes if r.fecha == fecha]
-            if del_dia:
+            if del_dia and not reemplazar:
                 raise ErrorSubidaDrive(
                     f"Ya hay un reporte de {fecha:%d/%m/%Y}: "
                     + ", ".join(f"'{r.nombre}'" for r in del_dia)
-                    + ". Se aborta para no duplicar."
+                    + ". Se aborta para no duplicar. Con reemplazar=True se aparta "
+                    "el anterior y el nombre pasa al nuevo."
                 )
+            if del_dia and reemplazar:
+                # "Reemplazar" se hace APARTANDO, no borrando. Drive no expone un
+                # borrado fiable por RPA, y aunque lo expusiera: el archivo que
+                # se sustituye es el reporte del dia, con datos de matricula de
+                # estudiantes, y su enlace puede estar abierto en la pestana de
+                # alguien. Renombrarlo cumple lo pedido -- el nombre canonico
+                # queda para el nuevo -- sin destruir nada y sin romper enlaces,
+                # porque las URL de Drive van por id y no por nombre.
+                #
+                # Si el anterior sobra, quitarlo es un clic en Drive. Al reves no:
+                # un borrado que no se pidio no se deshace con un clic.
+                # Hay que VOLVER a la carpeta del mes antes de renombrar.
+                # `_leer_consecutivo` navega a la raiz para mirar el mes
+                # anterior, asi que al llegar aqui la UI esta mostrando otra
+                # carpeta y `_renombrar` no encuentra la fila: eso es lo que
+                # fallo en el primer intento del 04/09/2026 ("No se encuentra
+                # 'REPORTE 03/09/2026 #198' para renombrarlo").
+                _abrir_carpeta(page, id_raiz, cfg, "la carpeta raiz")
+                _entrar_en_carpeta_mes(page, cfg, fecha, advertencias)
+
+                for previo in del_dia:
+                    apartado = f"{previo.nombre} {SUFIJO_APARTADO}"
+                    log.warning(
+                        "Ya habia reporte de %s ('%s'); se aparta como '%s' y el "
+                        "nombre pasa al nuevo.",
+                        f"{fecha:%d/%m/%Y}",
+                        previo.nombre,
+                        apartado,
+                    )
+                    _renombrar(page, cfg, previo.nombre, apartado)
+                    advertencias.append(
+                        f"'{previo.nombre}' se aparto como '{apartado}'. Sigue en "
+                        "Drive y su enlace sigue funcionando."
+                    )
 
             # El numero del nombre es el valor de la tarjeta 'NO MATRICULADO'
             # del tablero, NO un consecutivo (decision del 24/08/2026). Orden:

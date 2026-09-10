@@ -126,6 +126,55 @@ def _exigir(locator: Locator, timeout_seg: float, descripcion: str) -> Locator:
     )
 
 
+#: Plazo para que un campo de filtro pase de deshabilitado a editable.
+#:
+#: SmartClient deshabilita sus controles mientras trabaja (les pone la clase
+#: `textItemDisabled` y el atributo `disabled`). Estar VISIBLE no es estar
+#: EDITABLE, y esa diferencia costo el periodo 2026D completo el 10/09/2026:
+#: `_exigir` daba el campo por bueno al verlo, `fill` esperaba su plazo por
+#: defecto de 30 s a que fuera editable, y reventaba con
+#:
+#:     Locator.fill: Timeout 30000ms exceeded
+#:     locator resolved to <input disabled class="textItemDisabl...">
+#:
+#: 30 s es poco en un ERP cuyas acciones tardan 58-125 s medidos: es el mismo
+#: error de calibracion que el timeout de 120 s frente a un desvincular de
+#: 124 s (03/09/2026). 120 s da margen sin dejar la corrida colgada.
+SEG_ESPERA_CAMPO_EDITABLE = 120.0
+
+#: Cada cuanto se vuelve a mirar si el campo ya esta editable.
+SEG_SONDEO_CAMPO = 1.0
+
+
+def _exigir_editable(
+    locator: Locator, descripcion: str, timeout_seg: float = SEG_ESPERA_CAMPO_EDITABLE
+) -> Locator:
+    """Espera a que el campo este EDITABLE, no solo visible.
+
+    Se sondea en vez de delegar en el plazo de `fill` para poder decir en el
+    error lo que de verdad paso -- "el campo sigue deshabilitado" -- en lugar
+    de un timeout de Playwright que no explica nada y manda a buscar el fallo
+    en los selectores, que estan bien.
+    """
+    campo = locator.first
+    limite = time.monotonic() + timeout_seg
+    while True:
+        try:
+            if campo.is_editable():
+                return campo
+        except ErrorPlaywright as exc:
+            log.debug("No se pudo consultar %s: %s", descripcion, exc)
+        if time.monotonic() >= limite:
+            raise ErrorLecturaSinu(
+                f"{descripcion} sigue DESHABILITADO tras {timeout_seg:.0f}s. "
+                f"SmartClient deshabilita sus controles mientras trabaja, asi "
+                f"que lo normal es que ISEF07 siguiera ocupado; no es un "
+                f"problema de selectores. Si se repite, subir "
+                f"SEG_ESPERA_CAMPO_EDITABLE."
+            )
+        time.sleep(SEG_SONDEO_CAMPO)
+
+
 def esperar_sin_cargas(page: Page, cfg: Config, timeout_seg: float | None = None) -> None:
     """Espera a que no haya ninguna carga en curso.
 
@@ -645,6 +694,7 @@ def filtrar_grupos_por_materia(
     )
     # `fill` y no triple clic, por lo mismo que en el filtro de cedula: la capa
     # `isc_EH_screenSpan` de SmartClient intercepta los clics de puntero.
+    filtro = _exigir_editable(filtro, "el filtro de la columna de materia")
     filtro.fill(cod_materia)
     filtro.press("Enter")
     esperar_sin_cargas(page, cfg)
@@ -674,6 +724,7 @@ def limpiar_filtro_de_materia(page: Page, cfg: Config) -> None:
         cfg.timeout_operacion_seg,
         "el filtro de la columna de materia de la grilla Grupos",
     )
+    filtro = _exigir_editable(filtro, "el filtro de materia (para vaciarlo)")
     filtro.fill("")
     filtro.press("Enter")
     esperar_sin_cargas(page, cfg)
@@ -716,6 +767,10 @@ def leer_estudiante(
     # desplegable" y fue contraproducente: SmartClient reaccionaba poniendo su
     # capa de eventos por encima, y entonces el clic siguiente se consideraba
     # interceptado. Quitarlo devolvio el comportamiento que ya funcionaba.
+    # Visible NO es editable: SmartClient deshabilita el campo mientras trabaja.
+    # Esperarlo aqui, con un plazo acorde al ERP, evita el timeout de 30 s de
+    # `fill` que se llevo el periodo 2026D entero el 10/09/2026.
+    filtro = _exigir_editable(filtro, "el filtro de 'No. Identificacion'")
     filtro.fill(identificacion)
     filtro.press("Enter")
     esperar_sin_cargas(page, cfg)

@@ -465,6 +465,25 @@ class TestConfirmacionDelCheck:
             esc.ejecutar()
         assert len(esc.pedidas) == ej.INTENTOS_HASTA_ESCALAR
 
+    def test_la_excepcion_lleva_lo_medido(self, monkeypatch):
+        """El 07/09/2026: 7 unidades rojas anotadas con acciones=[] y 0 s.
+
+        Los datos estaban medidos; lo que faltaba era que la excepcion los
+        llevara hasta el diario. Sin ellos no se puede saber que costo un fallo
+        ni cuantas veces se pulso vincular, que es lo primero que se pregunta
+        cuando algo sale rojo.
+        """
+        esc = _Escenario(monkeypatch, antes=[_g(False)], despues=[_g(False)])
+        with pytest.raises(ej.CheckNoConfirmado) as exc:
+            esc.ejecutar()
+        r = exc.value.resultado
+        assert r is not None
+        # Las tres pulsaciones de vincular: lo que el diario anotaba como [].
+        assert len(r.acciones_ejecutadas) == ej.INTENTOS_HASTA_ESCALAR
+        assert r.materias_sin_check == [f"{MATERIA}/{GRUPO}"]
+        # `segundos` no se comprueba aqui: en el escenario todo es instantaneo y
+        # redondea a 0,0, asi que medirlo seria medir el reloj, no el arreglo.
+
     def test_isef07_no_permite_vincular_escala(self, monkeypatch):
         esc = _Escenario(
             monkeypatch, antes=[_g(False)], despues=[_g(False)],

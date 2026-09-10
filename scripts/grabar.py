@@ -52,7 +52,6 @@ from moodle_sinu.acceso_sinu import (  # noqa: E402
     abrir_sinu,
     iniciar_sesion,
     sesion_activa,
-    url_con_barra,
 )
 from moodle_sinu.navegador import (  # noqa: E402
     ARG_MAXIMIZAR,

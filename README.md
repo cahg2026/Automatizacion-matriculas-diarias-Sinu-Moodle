@@ -36,6 +36,256 @@ $PY = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
 Copy-Item config\.env.example config\.env   # y rellenar
 ```
 
+## El día completo en un comando
+
+```powershell
+# El día, de verdad. Es el comando de todas las mañanas.
+.\.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad
+
+# Ensayo: recorre todo y dice qué haría, sin escribir en SINU
+.\.venv\Scripts\python.exe scripts\dia_completo.py
+
+# Solo hasta dejar el Sheet subido, sin tocar SINU
+.\.venv\Scripts\python.exe scripts\dia_completo.py --hasta-subir
+```
+
+`scripts/dia_completo.py` encadena las seis etapas. Su razón de ser es que **no
+haya que copiar valores de una salida a la siguiente**: eso era lo que
+convertía el proceso diario en algo manual y frágil.
+
+| Paso | Qué |
+|---|---|
+| 0 | Perfil de navegador y **sesión de Google, comprobada de verdad** |
+| 1 | **Cerrojo**: ¿se actualizó el tablero HOY? Si no, avisa y **no exporta** |
+| 2 | Power BI → `.xlsx` en `data\raw\` |
+| 3 | Fase 1: calidad, orden A–Z por periodo, subida del Sheet |
+| 4 | ISEF07: procesa las matrículas, periodo por periodo |
+| 5 | Escribe la columna Q y sube el Sheet marcado |
+| 6 | Cierre: ciclos a medias, escalados y aviso con métricas |
+
+### Por qué es Python y no PowerShell
+
+Hubo un `dia_completo.ps1`. El 08/09/2026 Kaspersky empezó a bloquearlo:
+
+```
+dia_completo.ps1: 1 Carácter: 1
+Este script contiene elementos malintencionados y ha sido bloqueado
+por el software antivirus.
+FullyQualifiedErrorId : ScriptContainedMaliciousContent
+```
+
+El bloqueo es de AMSI y ocurre al **analizar** el archivo, antes de su primera
+instrucción: no dejaba ni bitácora, así que el fallo era mudo — devolvía código
+1 y cero salida. Se descubrió capturando `stderr`, que es donde AMSI escribe.
+
+**No se reescribió el `.ps1` "para que no lo detecte".** Remodelar código hasta
+esquivar una regla de antivirus es, en la forma, evasión de detección, y en el
+fondo es adivinar contra una heurística opaca que puede cambiar cualquier día.
+Se cambió de tecnología, que es lo que resuelve el problema.
+
+La migración además dio tres cosas que el `.ps1` no podía:
+
+- **La lógica del día entra en pytest.** Sus tres defectos del 07/09/2026 —la
+  bitácora en UTF-16, la rotación del diario colocada antes de tiempo y el
+  `--saltar-hechas` que no se pasaba nunca— vivían todos en la capa que no se
+  podía probar. Ahora hay 19 pruebas sobre esa lógica.
+- **`subprocess` recibe listas de argumentos**, así que no hay shell que
+  reinterprete comillas. Con una ruta que tiene espacios *y* acentos, eso quita
+  toda una clase de fallos.
+- **La bitácora recoge stdout y stderr.** El `.ps1` perdía stderr, que es justo
+  donde Python escribe sus logs.
+
+Los dos `.ps1` quedan en `docs/retirado/` como referencia histórica, sin uso.
+
+### Contar cookies no dice si la sesión sirve
+
+El 08/09/2026 el paso 0 dio el visto bueno con la sesión de Google **muerta**.
+El perfil tenía 88 cookies y las de sesión «todas presentes» — y Google las
+había invalidado del lado del servidor. Resultado: se exportó Power BI, se
+abrió el cerrojo de escritura, y el fallo salió en el paso 3 al subir el Sheet.
+
+**Una cookie presente dice que el navegador la guarda, no que el servidor la
+acepte.** Lo único que lo dice es pedirle una página.
+
+Por eso `probar_perfil.py` ahora navega a Drive y mira si redirige:
+
+| Salida | Significado |
+|---|---|
+| `0` | Drive respondió sin pedir login: la sesión sirve |
+| `5` | la sesión no sirve → el flujo se detiene **en el paso 0** |
+
+Y distingue tres motivos, porque cada uno se arregla de otra forma:
+
+- **Reverificar identidad** (`confirmidentifier`) — «Demuestra que eres tú».
+  Es el segundo factor; solo lo resuelve una persona. Fue el caso del 08/09.
+- **Elegir cuenta** (`accountchooser`) — la sesión existe, hay varias cuentas.
+  Fijar `/u/0/` no lo salta.
+- **Sin sesión** (`signin`, `ServiceLogin`) — no hay sesión válida.
+
+Se resuelve una vez, a mano, y queda guardada en el perfil:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\probar_perfil.py --iniciar-sesion
+```
+
+`--sin-exigir-sesion` desactiva la comprobación, para diagnosticar el perfil en
+sí sin que la sesión decida el resultado.
+
+### El cerrojo del día: no procesar datos de ayer
+
+Antes de exportar, `scripts/verificar_actualizacion.py` lee del tablero el
+texto `Datos actualizados el 8/9/26` y lo compara con hoy.
+
+De dónde sale ese dato **está medido, no supuesto** (se sondeó con
+`scripts/sondear_actualizacion.py` el 08/09/2026):
+
+- El `.xlsx` exportado **no** lo trae: su única fila de pie lista los filtros.
+- Las tarjetas del tablero tampoco: solo hay `MATRICULADO` y `NO MATRICULADO`.
+- Sí lo trae la **barra de herramientas superior** de Power BI Service, a la
+  derecha de `ValidacionMoodle |` y a la izquierda del buscador global. **No
+  está en el lienzo del informe**, y por eso ningún localizador de visuales lo
+  ve. Cadena de ancestros medida:
+
+```
+SPAN.data-updated          ← el texto: "Datos actualizados el 8/9/26"
+ └ BUTTON.info-bar         ← de aquí sale la flecha: es un desplegable
+   └ ARTIFACT-INFO
+     └ DIV.topNavLeft
+       └ HEADER
+         └ TRIDENT-HEADER#header   ← la barra principal
+```
+
+El localizador es **`#header span.data-updated`**, no el texto. La clase es
+semántica y no depende del idioma; buscar «Datos actualizados» se rompería el
+día que la interfaz saliera en inglés. Se acota a `#header` para que no pueda
+confundirse nunca con contenido del lienzo.
+
+Hay tres capas: la clase, luego el texto dentro de `#header`, y por último un
+barrido de la página. El log dice por cuál entró — si algún día dice
+«BARRIDO», es señal de que conviene volver a sondear. Una excepción importante:
+si el nodo aparece pero su texto **no** se puede interpretar, se falla en vez de
+seguir probando localizadores. Eso significa que el tablero cambió de formato, y
+buscar hasta encontrar cualquier fecha que encaje sería peor que decirlo.
+
+Hay que esperar el lienzo antes de mirar. Sobre la pantalla de carga de Power BI
+todo sale vacío, y eso se leería como «no hay fecha» en vez de «aún no ha
+cargado»: pasó en el primer sondeo, y lo delató la captura de pantalla.
+
+La fecha se interpreta **día/mes/año** porque el navegador se abre con
+`POWERBI_IDIOMA=es-CO`. Hay una guarda: si sale una fecha futura se falla en vez
+de devolver un dato del revés, que es lo que ocurriría si el idioma cambiara.
+
+Códigos de salida, y por qué son tres y no dos:
+
+| | |
+|---|---|
+| `0` | coincide con hoy → seguir con la descarga |
+| `3` | **anterior** a hoy → alerta crítica y parar |
+| `4` | **no se pudo leer**, o fecha posterior a hoy → alerta distinta y parar |
+
+El 3 y el 4 van aparte porque la acción de la persona difiere: en un caso se
+reclama al departamento de datos; en el otro se mira si el tablero cambió de
+forma. **No saberlo no es lo mismo que saber que está viejo.**
+
+El criterio de falla es «**anterior** a hoy», no «distinto de hoy», y la
+diferencia importa: una fecha *posterior* no es un tablero viejo, es una lectura
+girada (día y mes al revés), y se rechaza como ilegible en vez de anunciarse
+como retraso.
+
+### Avisos
+
+Dos canales, los dos por `config/.env`, y un respaldo que siempre funciona.
+
+```
+NOTIFICAR_WEBHOOK=https://<...>          # Teams o Slack. Recomendado.
+
+NOTIFICAR_SMTP_SERVIDOR=smtp.office365.com
+NOTIFICAR_SMTP_USUARIO=<cuenta>
+NOTIFICAR_SMTP_PASSWORD=<contraseña de aplicación>
+NOTIFICAR_DESTINATARIOS=alguien@cun.edu.co
+```
+
+El webhook es el camino corto: una URL, sin contraseñas que rotar, y el destino
+va dentro. Con Microsoft 365, el correo exige una **contraseña de aplicación**:
+la organización pide segundo factor y el SMTP plano no lo pasa.
+
+**Para avisar a más personas sin montar nada**, se añaden como invitados del
+evento de Calendar y Google manda su propia invitación:
+
+```
+NOTIFICAR_INVITADOS=alguien@cun.edu.co, otro@cun.edu.co
+```
+
+Es el camino de entrega más fiable que hay aquí: no depende de ningún servidor
+nuestro. Aplica a los dos avisos, el de éxito y el de tablero sin actualizar.
+
+Cuatro avisos:
+
+| Evento | Asunto |
+|---|---|
+| Tablero sin actualizar | `⚠️ ALERTA: Tablero Power BI sin actualizar - <fecha>` |
+| No se pudo leer la fecha | `⚠️ ALERTA: no se pudo leer la fecha del tablero - <fecha>` |
+| Flujo terminado | `✅ ÉXITO: Flujo de procesamiento finalizado - <fecha>` |
+| Flujo incompleto | `❌ FALLO: Flujo de procesamiento incompleto - <fecha>` |
+
+El de fallo no estaba en el encargo y hace falta: sin él, en desatendido un
+fallo a mitad se ve **exactamente igual** que un día sin novedades — silencio.
+
+Dos decisiones del módulo que conviene conocer:
+
+- **Sin canal configurado lo dice y devuelve «no enviado».** Callarse parecería
+  que avisó, y eso es peor que no avisar.
+- **Nunca lanza excepción.** Un aviso que revienta se llevaría por delante justo
+  el flujo al que intenta avisar; los problemas van en el resultado.
+
+Las métricas del aviso **no se pasan por parámetro**: `resumen_dia.py` las lee
+del diario, así que cuentan lo que de verdad pasó. Y los rojos van agrupados por
+materia y grupo, que es lo que convierte una lista de 15 personas en un
+diagnóstico de 2 grupos — el 07/09/2026 fue exactamente así.
+
+### Ejecución desatendida a las 9:00, de lunes a viernes
+
+```powershell
+# Estreno prudente: unos días recorriendo el flujo sin escribir en SINU
+.\.venv\Scripts\python.exe scripts\programar_9am.py --simulacion
+
+# Producción
+.\.venv\Scripts\python.exe scripts\programar_9am.py
+
+# Quitarla
+.\.venv\Scripts\python.exe scripts\programar_9am.py --quitar
+```
+
+El disparador es **semanal con lunes a viernes**, no diario: el proceso es de
+gestión académica y en fin de semana no hay quien atienda una alerta. En el
+Programador se ve como `DaysOfWeek = 62`, que es la máscara exacta de L–V
+(2+4+8+16+32), sin sábado ni domingo.
+
+El **primer disparo** se calcula saltando el fin de semana: hoy si la hora aún
+no ha pasado, y si no el siguiente día laborable. La primera versión ponía
+siempre «mañana», y registrada un miércoles a las 08:12 para las 09:00 dejaba
+la tarea para el jueves — se habría esperado a las 9:00 sin que pasara nada.
+
+**Programador de tareas de Windows, no `schedule`/APScheduler.** Una tarea del
+sistema sobrevive a reinicios, a cierres de sesión y a que se cierre la consola.
+Un bucle de Python vive solo mientras viva su proceso, y basta un reinicio
+nocturno para que el día siguiente no se procese y nadie se entere — que es el
+fallo que todo este montaje pretende evitar.
+
+Se registra por XML y no con `/TR`, porque el XML permite fijar los ajustes que
+de verdad deciden si la tarea corre:
+
+- **`StartWhenAvailable`** — si el equipo estaba apagado a las 9:00, corre en
+  cuanto arranque. Sin esto el día se salta sin dejar rastro.
+- **Batería** — el defecto de Windows es *no* arrancar sin corriente. En
+  portátil eso perdería el día por estar desenchufado.
+- **`InteractiveToken`** — el flujo necesita sesión interactiva: la subida a
+  Drive falla sin ventana (comprobado el 03/09/2026) y Chrome usa el perfil de
+  este usuario. Con «ejecutar aunque el usuario no haya iniciado sesión» el
+  navegador no tiene escritorio y la subida se cae.
+
+Por eso mismo: **el equipo tiene que estar encendido y con la sesión iniciada.**
+
 ## Uso — Fase 1
 
 ```powershell

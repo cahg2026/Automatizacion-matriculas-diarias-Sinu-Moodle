@@ -41,8 +41,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
+import shutil
 import sys
-from datetime import datetime
+import tempfile
+from datetime import date, datetime
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -71,6 +74,47 @@ VERDE = Color.VERDE_CLARO
 ROJO = Color.ROJO_CLARO
 
 
+#: `reporte_moodle_sinu_20260903_120929...` -> 2026-09-03. Ese sello lo pone la
+#: etapa 1 al descargar, asi que es la fecha del REPORTE.
+RX_SELLO = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)")
+
+
+def fecha_del_reporte(archivo: Path) -> date | None:
+    """La fecha del reporte, leida del sello de su nombre de archivo.
+
+    Regla del dueno del proceso (04/09/2026): el nombre en Drive lleva **la
+    fecha del reporte**, no la del dia en que se ejecuta la gestion. Son
+    distintas siempre que se procese al dia siguiente -- paso el 04/09 con el
+    reporte del 03/09, y el archivo salio como `REPORTE 04-09-2026`.
+    """
+    m = RX_SELLO.search(archivo.name)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def _copia_fuera_de_onedrive(origen: Path) -> Path:
+    """Copia el archivo al temporal del sistema y devuelve la ruta.
+
+    `data/processed/` vive dentro de OneDrive, y OneDrive bloquea los archivos
+    mientras los sincroniza -- el README ya lo advierte para el perfil del
+    navegador y el `.venv`. El 04/09/2026 la subida de un archivo recien escrito
+    ahi fallo CON ventana ("no aparecio en la carpeta tras 300s"), el mismo
+    sintoma que da un archivo que Chrome no puede leer entero.
+
+    La copia que se entrega al selector de archivos se escribe fuera del alcance
+    del sincronizador. Es barato y descarta una causa entera.
+    """
+    base = Path(tempfile.gettempdir()) / "moodle-sinu-subidas"
+    base.mkdir(parents=True, exist_ok=True)
+    destino = base / origen.name
+    shutil.copy2(origen, destino)
+    return destino
+
+
 def _argumentos() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Marca la gestion de la etapa 4 en el .xlsx")
     p.add_argument("reporte", help="El .xlsx validado (el que se subio como Sheet)")
@@ -91,6 +135,35 @@ def _argumentos() -> argparse.Namespace:
         action="store_true",
         help="Navegador con ventana. OBLIGATORIO en la practica para subir: la "
         "subida a Drive falla en headless (comprobado el 03/09/2026).",
+    )
+    p.add_argument(
+        "--fecha",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Fecha del reporte para el nombre en Drive. Por defecto se deduce "
+        "del sello del archivo, que es lo correcto: el nombre lleva la fecha del "
+        "REPORTE, no la del dia en que corre la gestion.",
+    )
+    p.add_argument(
+        "--consecutivo",
+        type=int,
+        default=None,
+        help="Fuerza el numero del reporte, para que el marcado conserve el mismo "
+        "que el original.",
+    )
+    p.add_argument(
+        "--reemplazar",
+        action="store_true",
+        help="Si ya hay un reporte de esa fecha en Drive, lo APARTA (le anade un "
+        "sufijo) y el nombre canonico pasa al marcado. No borra nada y no rompe "
+        "enlaces: las URL de Drive van por id, no por nombre.",
+    )
+    p.add_argument(
+        "--traza",
+        action="store_true",
+        help="Guarda una traza de Playwright en logs/. Es lo que hay que mirar "
+        "cuando la subida dice 'no aparecio en la carpeta': la traza muestra si "
+        "el archivo se entrego al selector y que hizo Drive despues.",
     )
     p.add_argument("--verbose", "-v", action="store_true")
     return p.parse_args()
@@ -216,12 +289,34 @@ def main() -> int:
     from moodle_sinu.subidor_drive import ErrorSubidaDrive, subir_reporte
 
     cfg = Config.desde_entorno()
+
+    if args.fecha:
+        fecha = date.fromisoformat(args.fecha)
+    else:
+        fecha = fecha_del_reporte(entrada)
+        if fecha is None:
+            print()
+            print(
+                f"!! No se pudo deducir la fecha del reporte de '{entrada.name}'. "
+                "Indicarla con --fecha YYYY-MM-DD: el nombre en Drive debe llevar "
+                "la fecha del reporte, no la de hoy."
+            )
+            return 2
+    print(f"Fecha para Drive      : {fecha:%d/%m/%Y} (del reporte, no de hoy)")
+
+    a_subir = _copia_fuera_de_onedrive(salida)
+    log.info("Copia para subir, fuera de OneDrive: %s", a_subir)
+
     try:
         r = subir_reporte(
-            salida,
+            a_subir,
             cfg=cfg,
+            fecha=fecha,
+            consecutivo=args.consecutivo,
             headless=False if args.visible else None,
             abrir_al_terminar=False,
+            reemplazar=args.reemplazar,
+            con_traza=args.traza,
         )
     except ErrorSubidaDrive as exc:
         log.error("No se pudo subir: %s", exc)
@@ -232,6 +327,8 @@ def main() -> int:
     print()
     print(f"Subido como : {getattr(r, 'nombre', '(ver log)')}")
     print(f"Sheet       : {getattr(r, 'url_sheet', '(ver log)')}")
+    for aviso in getattr(r, "advertencias", []):
+        print(f"  aviso: {aviso}")
     return 0
 
 
