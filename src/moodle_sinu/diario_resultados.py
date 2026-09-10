@@ -63,6 +63,13 @@ MOTIVO_CICLO_ABIERTO = "quedo-desvinculada"
 MOTIVO_NO_LEIDO = "no-se-pudo-leer"
 MOTIVO_DESBORDE = "accion-se-desbordo"
 
+#: Fallo tecnico en ISEF07 (clic que no prende, plazo agotado, grilla que no
+#: responde). ANTES se anotaba como MOTIVO_CHECK_NO_CONFIRMADO, y eso engana:
+#: manda a validar un check en ISEF05/PACF50 cuando lo que paso es que la
+#: automatizacion no pudo operar. Son dos acciones distintas para el operador:
+#: uno se valida a mano, el otro se reintenta.
+MOTIVO_FALLO_TECNICO = "fallo-tecnico"
+
 
 def apuntar(
     *,

@@ -90,7 +90,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 
 from playwright.sync_api import (
     Error as ErrorPlaywright,
@@ -108,7 +107,6 @@ from .constantes_sinu import (
     MODULOS_DE_ESCALADO,
     SEG_EJECUCION_VINCULACION,
     TIMEOUT_EJECUCION_ISEF07_SEG,
-    TIMEOUT_OPERACION_SINU_SEG,
     VERIFICAR_CHECK_VINCULADO,
 )
 from .lector_sinu import clic_smartclient
@@ -178,7 +176,19 @@ class TipoSecuencia(Enum):
 
 
 class ErrorEjecucionSinu(RuntimeError):
-    """La ejecucion en ISEF07 no se pudo completar."""
+    """La ejecucion en ISEF07 no se pudo completar.
+
+    Lleva el `resultado` cuando lo hay. Sin esto el diario anotaba las unidades
+    fallidas con `acciones=[]` y `segundos=0`: los datos SI estaban medidos, pero
+    el manejador de la excepcion no tenia de donde leerlos. Se perdia justo lo
+    que hay que ver cuando algo falla -- cuanto costo y que se pulso -- que es
+    lo que hizo falta el 03/09/2026 para descubrir que el timeout de 120 s se
+    quedaba corto frente a un desvincular de 124 s.
+    """
+
+    def __init__(self, *args: object, resultado: object | None = None) -> None:
+        super().__init__(*args)
+        self.resultado = resultado
 
 
 class CicloAbierto(ErrorEjecucionSinu):
@@ -1054,7 +1064,8 @@ def ejecutar_materia(
             raise CheckNoConfirmado(
                 f"{identificacion} / {objetivo} ({cod_periodo}): ISEF07 no permitio "
                 f"vincular ({exc}). Validar el check en "
-                f"{'/'.join(MODULOS_DE_ESCALADO).upper()} y anotarlo en el Sheet."
+                f"{'/'.join(MODULOS_DE_ESCALADO).upper()} y anotarlo en el Sheet.",
+                resultado=resultado,
             ) from exc
 
         _exigir_sin_desborde(
@@ -1076,7 +1087,8 @@ def ejecutar_materia(
             raise CheckNoConfirmado(
                 f"{identificacion} / {objetivo} ({cod_periodo}): se vinculo y el "
                 f"check 'Vinculado?' no aparecio. Validar el check en "
-                f"{'/'.join(MODULOS_DE_ESCALADO).upper()} y anotarlo en el Sheet."
+                f"{'/'.join(MODULOS_DE_ESCALADO).upper()} y anotarlo en el Sheet.",
+                resultado=resultado,
             )
         return resultado
 

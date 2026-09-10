@@ -36,6 +36,7 @@ from moodle_sinu.navegador import abrir_contexto  # noqa: E402
 from moodle_sinu.perfil_navegador import (  # noqa: E402
     ErrorPerfilNavegador,
     chrome_esta_corriendo,
+    comprobar_sesion_google,
     resolver,
 )
 
@@ -94,6 +95,12 @@ def _argumentos() -> argparse.Namespace:
         help="URL que se abre al arrancar. Con --visible --esperar sirve para "
         "iniciar sesion a mano una sola vez: la cookie queda en el perfil y "
         "las corridas siguientes ya no la piden.",
+    )
+    p.add_argument(
+        "--sin-exigir-sesion",
+        action="store_true",
+        help="No comprueba la sesion de Google contra Drive, y por tanto no "
+        "falla por ella. Solo para diagnosticar el perfil en si.",
     )
     p.add_argument(
         "--iniciar-sesion",
@@ -162,6 +169,10 @@ def main() -> int:
     )
     cfg = Config.desde_entorno()
 
+    #: Se levanta si la sesion de Google no sirve. Decide el codigo de salida:
+    #: es lo que hace que el paso 0 del flujo se detenga antes de exportar.
+    sesion_caida = False
+
     print("=== Perfil configurado ===")
     print(f"NAVEGADOR_PERFIL            : {cfg.navegador_perfil}")
     print(f"NAVEGADOR_PERFIL_DIRECTORIO : {cfg.navegador_perfil_directorio}")
@@ -209,6 +220,30 @@ def main() -> int:
         try:
             print("[ok] El navegador abrio con el perfil.")
             _informar_cookies(context, "en el perfil")
+
+            # Contar cookies NO basta. El 08/09/2026 el perfil tenia 88 y
+            # "todas las de sesion de Google presentes" mientras Google habia
+            # invalidado la sesion del lado del servidor: el paso 0 dio el
+            # visto bueno, se exporto Power BI y el fallo salio en el paso 3,
+            # ya con el cerrojo de escritura abierto. Lo unico que lo dice de
+            # verdad es pedirle una pagina a Drive.
+            if not args.sin_exigir_sesion and not args.iniciar_sesion:
+                print()
+                print("=== Sesion de Google, comprobada de verdad ===")
+                ses = comprobar_sesion_google(context, cfg)
+                if ses.viva:
+                    print("[ok] Drive respondio sin pedir login: la sesion sirve.")
+                else:
+                    print(f"[!!] {ses.detalle}")
+                    print(f"     URL final: {ses.url_final[:120]}")
+                    print()
+                    print("     Las cookies pueden estar TODAS y la sesion estar")
+                    print("     caida igualmente: la cookie dice que el navegador")
+                    print("     la guarda, no que el servidor la acepte.")
+                    print()
+                    print("     Resolverlo una vez, a mano:")
+                    print("       python scripts\probar_perfil.py --iniciar-sesion")
+                    sesion_caida = True
             if args.url or args.esperar:
                 page = context.pages[0] if context.pages else context.new_page()
                 if args.url:
@@ -239,6 +274,14 @@ def main() -> int:
     print("  python scripts\\probar_perfil.py --iniciar-sesion")
     print("Las cookies del perfil personal NO se pueden copiar: Chrome las cifra")
     print("contra su instalacion (App-Bound Encryption). Los favoritos si viajan.")
+
+    if sesion_caida:
+        # Salir con error es el punto: asi el paso 0 del flujo se detiene AQUI,
+        # antes de exportar Power BI y antes de abrir el cerrojo de escritura.
+        print()
+        print("SALIDA 5: la sesion de Google no sirve. El flujo del dia NO debe")
+        print("continuar: la subida del Sheet fallaria de todas formas.")
+        return 5
     return 0
 
 

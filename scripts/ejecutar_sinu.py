@@ -268,7 +268,6 @@ def main() -> int:
     log.info("%s", resumen_permisos())
     _avisar_ciclos_previos()
 
-    por_fila = {f.fila: f for f in resultado.filas}
     sin_cabeza = False if args.visible else cfg.powerbi_headless
     sello = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -391,7 +390,33 @@ def main() -> int:
                 log.error("No se pudo abrir ISEF07: %s", exc)
                 return 1
 
-            fijar_periodo(page, cfg, lote.cod_periodo)
+            try:
+                fijar_periodo(page, cfg, lote.cod_periodo)
+            except ErrorLecturaSinu as exc:
+                # El periodo del reporte no existe en ISEF07 (paso el 03 y el
+                # 04/09/2026 con '26P04'). No se toca nada -- se falla antes de
+                # cualquier escritura -- pero SUS UNIDADES HAY QUE REGISTRARLAS
+                # IGUAL: sin esto se quedaban fuera del diario, y una fila que
+                # no esta en el diario no se pinta en el Sheet. El operador la
+                # veria en blanco, indistinguible de "todavia no le toca".
+                log.error("No se pudo fijar el periodo %s: %s", lote.cod_periodo, exc)
+                for operacion in operaciones:
+                    detenidos.append(
+                        (operacion.identificacion, f"periodo {lote.cod_periodo}: {exc}")
+                    )
+                    _anotar(
+                        operacion,
+                        diario.Veredicto.ROJO,
+                        diario.MOTIVO_NO_LEIDO,
+                        f"el periodo {lote.cod_periodo} no existe en ISEF07",
+                    )
+                print()
+                print(
+                    f"!! El periodo '{lote.cod_periodo}' no existe en el desplegable "
+                    f"de ISEF07. Sus {len(operaciones)} fila(s) quedan en ROJO."
+                )
+                print("   Hay que comprobar el dato en origen; no se toco nada.")
+                return 2
 
             for i, operacion in enumerate(operaciones, 1):
                 cedula = operacion.identificacion
@@ -518,6 +543,7 @@ def main() -> int:
                     _anotar(
                         operacion, diario.Veredicto.ROJO,
                         diario.MOTIVO_CHECK_NO_CONFIRMADO, str(exc),
+                        r=exc.resultado,
                     )
                     escalados.append((f"{cedula} / {objetivo}", str(exc)))
                     log.error("%s", exc)
@@ -534,9 +560,13 @@ def main() -> int:
                 except ErrorEjecucionSinu as exc:
                     detenidos.append((cedula, str(exc)))
                     log.error("%s: %s", cedula, exc)
+                    # No es un escalado: es que la automatizacion no pudo
+                    # operar. Anotarlo como 'check-no-confirmado' mandaba a
+                    # validar en ISEF05/PACF50 algo que ni se intento.
                     _anotar(
                         operacion, diario.Veredicto.ROJO,
-                        diario.MOTIVO_CHECK_NO_CONFIRMADO, str(exc),
+                        diario.MOTIVO_FALLO_TECNICO, str(exc),
+                        r=getattr(exc, "resultado", None),
                     )
         except Exception:
             log.exception("Fallo inesperado durante la etapa 4")
