@@ -40,3 +40,4 @@ desktop.ini
 # Sesiones de grabacion: llevan datos de estudiantes y posibles credenciales
 isef07_grabado_*.py
 logs/captura_*.jsonl
+
