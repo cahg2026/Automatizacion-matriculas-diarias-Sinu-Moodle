@@ -143,19 +143,26 @@ def revisar_entorno() -> bool:
 def preparar_env(solo_revisar: bool) -> bool:
     titulo("PASO 1 - config/.env, sus credenciales")
 
+    if not RUTA_PLANTILLA.is_file():
+        _falta("No esta la plantilla config/.env.example. Clon incompleto?")
+        return False
+
     if not RUTA_ENV.is_file():
         if solo_revisar:
-            _falta(f"No existe {RUTA_ENV.name}. Se crearia desde la plantilla.")
-            return False
-        if not RUTA_PLANTILLA.is_file():
-            _falta("No esta la plantilla config/.env.example. Clon incompleto?")
-            return False
-        shutil.copy2(RUTA_PLANTILLA, RUTA_ENV)
-        _ok(f"Creado {RUTA_ENV} desde la plantilla.")
+            # Se informa igual de QUE hara falta. La primera version salia aqui
+            # sin listar nada y luego decia "rellene las claves de arriba",
+            # cuando arriba no habia ninguna.
+            _falta(f"No existe {RUTA_ENV.name}; se creara desde la plantilla.")
+            origen = RUTA_PLANTILLA
+        else:
+            shutil.copy2(RUTA_PLANTILLA, RUTA_ENV)
+            _ok(f"Creado {RUTA_ENV} desde la plantilla.")
+            origen = RUTA_ENV
     else:
         _ok(f"{RUTA_ENV.name} ya existe.")
+        origen = RUTA_ENV
 
-    texto = RUTA_ENV.read_text(encoding="utf-8")
+    texto = origen.read_text(encoding="utf-8")
     vacias = []
     for clave, para_que in CLAVES_IMPRESCINDIBLES:
         # La clave esta vacia si aparece como `CLAVE=` sin nada detras.
