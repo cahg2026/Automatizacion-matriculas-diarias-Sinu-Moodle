@@ -360,3 +360,59 @@ class TestNoSeCreaACiegas:
 
         fuente = inspect.getsource(sd._abrir_carpeta)
         assert "_esperar_filas" in fuente
+
+
+class TestGuardaDeCoordinacion:
+    """Un reporte del dia ya en Drive significa que alguien ya proceso.
+
+    Es la unica guarda posible entre equipos: el diario que lleva la cuenta de
+    lo hecho (`logs/resultados_etapa4.jsonl`) es LOCAL a cada maquina, asi que
+    `--saltar-hechas` no sabe lo que hizo otra persona. Drive si es compartido.
+
+    Y salta en la etapa 3, que va ANTES de la 4: se aborta sin haber tocado una
+    sola matricula. El riesgo que evita no es el trabajo duplicado -- es que un
+    equipo desvincule lo que el otro acaba de vincular, y que un fallo en esa
+    ventana deje al estudiante desvinculado.
+    """
+
+    def _mensaje(self) -> str:
+        from moodle_sinu import subidor_drive as sd
+        import inspect
+
+        return inspect.getsource(sd.subir_reporte)
+
+    def test_aborta_si_ya_hay_reporte_del_dia(self):
+        fuente = self._mensaje()
+        assert "if del_dia and not reemplazar:" in fuente
+        assert "ErrorSubidaDrive" in fuente
+
+    def test_el_mensaje_dice_que_otro_pudo_procesar(self):
+        """Sin esto se lee como un choque de nombres de archivo, y quien lo vea
+        no entiende que es una senal de coordinacion."""
+        fuente = self._mensaje()
+        assert "YA SE EJECUTO" in fuente
+        assert "otra persona" in fuente
+
+    def test_el_mensaje_dice_que_no_se_toco_SINU(self):
+        fuente = self._mensaje()
+        assert "ANTES de tocar ninguna matricula" in fuente
+
+    def test_el_mensaje_ofrece_las_tres_salidas(self):
+        """No basta con abortar: hay que decir que hacer en cada caso.
+
+        Se normalizan los espacios porque el mensaje se parte en varias lineas
+        de codigo y una asercion literal se rompe al reajustar el texto.
+        """
+        fuente = " ".join(self._mensaje().split())
+        # Cada marca se comprueba suelta: el mensaje se parte en varias lineas
+        # de codigo y una frase entera cruzaria el corte entre literales.
+        assert "otra persona ya proceso hoy" in fuente   # no hay nada que hacer
+        assert "--reemplazar" in fuente                  # reprocesar a proposito
+        assert "probar sin escribir" in fuente           # la via segura
+        assert "--ejecutar-de-verdad" in fuente
+
+    def test_reemplazar_aparta_y_no_borra(self):
+        """Apartar y no borrar: el archivo lleva datos de matricula y su enlace
+        puede estar abierto en la pestana de alguien."""
+        fuente = self._mensaje()
+        assert "if del_dia and reemplazar:" in fuente
