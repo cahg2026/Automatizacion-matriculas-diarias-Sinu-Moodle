@@ -9,12 +9,16 @@ que abrir los tres:
 
 Sin los dos primeros el script recorre todo y dice lo que haria, sin tocar nada.
 
-Regla de negocio (21/08/2026):
+Regla de negocio, sobre LA materia que registra el reporte:
   Vinculado? = False -> Vincular.
-  Vinculado? = True  -> Desvincular, y despues Vincular.
+  Vinculado? = True  -> Desvincular, confirmar, y despues Vincular.
 
-Ojo: la accion de ISEF07 es por ESTUDIANTE, no por materia. Si alguna materia
-del estudiante esta vinculada, el reciclado pasa por todas.
+Unidad de trabajo: **(cedula, materia)**, una operacion por fila del reporte.
+Antes del 03/09/2026 este script decia que la accion era "por ESTUDIANTE, no por
+materia" y que el reciclado pasaba por todas sus asignaturas. Era falso, venia
+de la referencia de negocio, y reciclo 34 asignaturas cuando correspondian 5.
+Ahora la grilla Grupos se acota por COD_MATERIA antes de ejecutar, y tras cada
+escritura se comprueba que ninguna otra asignatura cambio (`AccionSeDesbordo`).
 
 Uso:
     python scripts/ejecutar_sinu.py <reporte.xlsx> --periodo 26V05
@@ -40,14 +44,20 @@ from moodle_sinu.acceso_sinu import ErrorAccesoSinu, abrir_y_acceder  # noqa: E4
 from moodle_sinu.config import DIR_LOGS, Config, asegurar_directorios  # noqa: E402
 from moodle_sinu.ejecutor_sinu import (  # noqa: E402
     RUTA_CICLOS_ABIERTOS,
+    RUTA_ESCALADO,
+    AccionSeDesbordo,
+    CheckNoConfirmado,
     CicloAbierto,
     ErrorEjecucionSinu,
     TipoSecuencia,
     ciclos_abiertos,
     decidir_secuencia,
-    ejecutar_estudiante,
+    ejecutar_materia,
     estimar_segundos,
+    fila_de_materia,
 )
+from moodle_sinu.constantes_sinu import MODULOS_DE_ESCALADO  # noqa: E402
+from moodle_sinu import diario_resultados as diario  # noqa: E402
 from moodle_sinu.lector_reporte import ErrorEstructuraReporte  # noqa: E402
 from moodle_sinu.constantes_sinu import ACTIVIDAD_VINCULACION  # noqa: E402
 from moodle_sinu.lector_sinu import (  # noqa: E402
@@ -55,7 +65,9 @@ from moodle_sinu.lector_sinu import (  # noqa: E402
     EstudianteAmbiguo,
     entrar_en_modulo,
     fijar_periodo,
+    filtrar_grupos_por_materia,
     leer_estudiante,
+    limpiar_filtro_de_materia,
 )
 from moodle_sinu.navegador import abrir_contexto  # noqa: E402
 from moodle_sinu.constantes import COL_COD_PERIODO, COL_IDENTIFICACION  # noqa: E402
@@ -105,10 +117,52 @@ def _argumentos() -> argparse.Namespace:
         help="Confirma que se quiere modificar SINU. Sin esto no se toca nada, "
         "aunque MODO_SIMULACION sea false.",
     )
+    p.add_argument(
+        "--saltar-hechas",
+        action="store_true",
+        help="Omite las unidades (cedula, materia) que el diario de resultados ya "
+        "tiene en VERDE. Es lo que hace reanudable una corrida interrumpida: sin "
+        "esto, volver a lanzar un periodo recicla lo que ya estaba bien, y cada "
+        "reciclado innecesario abre una ventana en la que la materia queda "
+        "desvinculada.",
+    )
     p.add_argument("--visible", action="store_true", help="Navegador con ventana")
     p.add_argument("--traza", action="store_true", help="Traza de Playwright en logs/")
     p.add_argument("--verbose", "-v", action="store_true", help="Log en DEBUG")
     return p.parse_args()
+
+
+def _releer_todas(page, cfg, cedula: str):
+    """La grilla Grupos SIN filtro de materia, para la guarda de desborde.
+
+    El filtro de columna de SmartClient persiste, asi que hay que vaciarlo
+    ANTES de volver a leer: si no, la "grilla completa" seguiria mostrando solo
+    la materia acotada y la comprobacion de desborde no veria nada.
+    """
+    limpiar_filtro_de_materia(page, cfg)
+    return leer_estudiante(page, cfg, cedula).grupos
+
+
+def _anotar(operacion, veredicto, motivo: str, detalle: str = "", r=None) -> None:
+    """Escribe el resultado de una unidad de trabajo en el diario.
+
+    Se llama en TODOS los desenlaces, incluidos los que no tocan SINU (la
+    materia que no esta, la fila sin COD_MATERIA). Si solo se anotaran los
+    exitos, el Sheet no podria distinguir "salio mal" de "todavia no se hizo",
+    que es justo la diferencia que el operador necesita ver.
+    """
+    diario.apuntar(
+        identificacion=operacion.identificacion,
+        cod_periodo=operacion.cod_periodo,
+        cod_materia=operacion.cod_materia,
+        num_grupo=operacion.num_grupo,
+        fila=operacion.fila,
+        veredicto=veredicto,
+        motivo=motivo,
+        detalle=detalle,
+        acciones=list(r.acciones_ejecutadas) if r is not None else [],
+        segundos=r.segundos if r is not None else 0.0,
+    )
 
 
 def _avisar_ciclos_previos() -> bool:
@@ -172,6 +226,26 @@ def main() -> int:
             )
             return 2
 
+    if args.saltar_hechas:
+        ya = {
+            clave
+            for clave, apunte in diario.ultimo_por_unidad().items()
+            if apunte.get("veredicto") == diario.Veredicto.VERDE.value
+        }
+        antes_de_saltar = len(operaciones)
+        operaciones = [
+            o
+            for o in operaciones
+            if (o.cod_periodo, o.identificacion, o.objetivo) not in ya
+        ]
+        saltadas = antes_de_saltar - len(operaciones)
+        if saltadas:
+            log.info(
+                "Se omiten %d unidad(es) ya en verde segun %s.",
+                saltadas,
+                diario.RUTA_RESULTADOS.name,
+            )
+
     if args.limite:
         operaciones = operaciones[: args.limite]
 
@@ -194,7 +268,6 @@ def main() -> int:
     log.info("%s", resumen_permisos())
     _avisar_ciclos_previos()
 
-    por_fila = {f.fila: f for f in resultado.filas}
     sin_cabeza = False if args.visible else cfg.powerbi_headless
     sello = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -202,6 +275,10 @@ def main() -> int:
     reciclados = 0
     abiertos: list[str] = []
     detenidos: list[tuple[str, str]] = []
+    #: Se ejecuto la accion y el check no quedo puesto, o ISEF07 no dejo
+    #: vincular. Van aparte de `detenidos` porque el siguiente paso es distinto:
+    #: consultar ISEF05/PACF50 y anotar el resultado en el Sheet, no reintentar.
+    escalados: list[tuple[str, str]] = []
 
     with sync_playwright() as pw:
         context, cerrar = abrir_contexto(pw, cfg, sin_cabeza)
@@ -313,44 +390,184 @@ def main() -> int:
                 log.error("No se pudo abrir ISEF07: %s", exc)
                 return 1
 
-            fijar_periodo(page, cfg, lote.cod_periodo)
+            try:
+                fijar_periodo(page, cfg, lote.cod_periodo)
+            except ErrorLecturaSinu as exc:
+                # El periodo del reporte no existe en ISEF07 (paso el 03 y el
+                # 04/09/2026 con '26P04'). No se toca nada -- se falla antes de
+                # cualquier escritura -- pero SUS UNIDADES HAY QUE REGISTRARLAS
+                # IGUAL: sin esto se quedaban fuera del diario, y una fila que
+                # no esta en el diario no se pinta en el Sheet. El operador la
+                # veria en blanco, indistinguible de "todavia no le toca".
+                log.error("No se pudo fijar el periodo %s: %s", lote.cod_periodo, exc)
+                for operacion in operaciones:
+                    detenidos.append(
+                        (operacion.identificacion, f"periodo {lote.cod_periodo}: {exc}")
+                    )
+                    _anotar(
+                        operacion,
+                        diario.Veredicto.ROJO,
+                        diario.MOTIVO_NO_LEIDO,
+                        f"el periodo {lote.cod_periodo} no existe en ISEF07",
+                    )
+                print()
+                print(
+                    f"!! El periodo '{lote.cod_periodo}' no existe en el desplegable "
+                    f"de ISEF07. Sus {len(operaciones)} fila(s) quedan en ROJO."
+                )
+                print("   Hay que comprobar el dato en origen; no se toco nada.")
+                return 2
 
             for i, operacion in enumerate(operaciones, 1):
                 cedula = operacion.identificacion
+                materia = operacion.cod_materia
+                grupo = operacion.num_grupo
+                objetivo = operacion.objetivo
+
+                if not materia:
+                    detenidos.append((cedula, "la fila del reporte no trae COD_MATERIA"))
+                    log.error(
+                        "%s (fila %s): sin COD_MATERIA, no se sabe que procesar.",
+                        cedula,
+                        operacion.fila,
+                    )
+                    _anotar(
+                        operacion, diario.Veredicto.ROJO, diario.MOTIVO_NO_LEIDO,
+                        "la fila del reporte no trae COD_MATERIA",
+                    )
+                    continue
+
+                # La grilla COMPLETA: de aqui sale el check de la materia y la
+                # foto contra la que se comprueba que la accion no se desborda.
                 try:
                     lectura = leer_estudiante(page, cfg, cedula)
                 except (EstudianteAmbiguo, ErrorLecturaSinu) as exc:
                     detenidos.append((cedula, str(exc)))
                     log.error("%s: no se pudo leer, se omite. %s", cedula, exc)
+                    _anotar(
+                        operacion, diario.Veredicto.ROJO, diario.MOTIVO_NO_LEIDO, str(exc)
+                    )
                     continue
 
-                secuencia = decidir_secuencia(lectura.grupos)
+                secuencia = decidir_secuencia(
+                    fila_de_materia(lectura.grupos, materia, grupo)
+                )
                 minimo, maximo = estimar_segundos(secuencia)
                 print(
-                    f"[{i}/{len(operaciones)}] {cedula}: {len(lectura.grupos)} materias "
+                    f"[{i}/{len(operaciones)}] {cedula} / {objetivo}: "
+                    f"{len(lectura.grupos)} materias en la grilla, se toca 1 "
                     f"-> {secuencia.value} ({minimo}-{maximo}s)",
                     flush=True,
                 )
 
+                # Acotar la grilla a ESA materia. Es lo que confina la accion:
+                # sin esto ISEF07 alcanza todas las asignaturas del periodo.
+                if secuencia is not TipoSecuencia.NADA and not cfg_efectiva.modo_simulacion:
+                    try:
+                        filtrar_grupos_por_materia(page, cfg, materia)
+                    except ErrorLecturaSinu as exc:
+                        detenidos.append((cedula, f"no se pudo acotar a {objetivo}: {exc}"))
+                        log.error(
+                            "%s / %s: no se pudo acotar la grilla, NO se ejecuta. %s",
+                            cedula,
+                            objetivo,
+                            exc,
+                        )
+                        _anotar(
+                            operacion, diario.Veredicto.ROJO, diario.MOTIVO_NO_LEIDO,
+                            f"no se pudo acotar la grilla: {exc}",
+                        )
+                        continue
+
                 try:
-                    r = ejecutar_estudiante(
+                    r = ejecutar_materia(
                         page,
                         cfg_efectiva,
                         identificacion=cedula,
                         cod_periodo=lote.cod_periodo,
+                        cod_materia=materia,
+                        num_grupo=grupo,
                         grupos=lectura.grupos,
+                        # Con la grilla ya acotada, releerla devuelve esa fila.
+                        releer_materia=lambda m=materia: filtrar_grupos_por_materia(
+                            page, cfg, m
+                        ),
+                        # Sin filtro: para la guarda de desborde.
+                        releer_todas=lambda ced=cedula: _releer_todas(page, cfg, ced),
                     )
                     hechos.append(r)
+                    if r.simulado:
+                        pass  # en simulacion no se ensucia el diario
+                    elif r.secuencia is TipoSecuencia.NADA:
+                        # La materia del reporte no esta en la grilla. No es un
+                        # fallo tecnico, pero para el Sheet es rojo: esa fila no
+                        # se pudo gestionar.
+                        _anotar(
+                            operacion, diario.Veredicto.ROJO,
+                            diario.MOTIVO_SIN_CORRESPONDENCIA, r.detalle, r,
+                        )
+                    else:
+                        _anotar(
+                            operacion, diario.Veredicto.VERDE, diario.MOTIVO_OK,
+                            f"vinculada y confirmada; {len(r.acciones_ejecutadas)} accion(es)",
+                            r,
+                        )
                     if r.secuencia is TipoSecuencia.RECICLAR and not r.simulado:
                         reciclados += 1
+                    if r.reciclado_incompleto:
+                        print(
+                            "    (aviso) el desvincular no se reflejo; el vincular "
+                            "si quedo confirmado",
+                            flush=True,
+                        )
+                except AccionSeDesbordo as exc:
+                    _anotar(
+                        operacion, diario.Veredicto.ROJO, diario.MOTIVO_DESBORDE, str(exc)
+                    )
+                    # El supuesto central falla: acotar la grilla no confina la
+                    # accion. Seguir tocaria materias fuera del reporte en cada
+                    # estudiante, asi que se corta la corrida entera.
+                    log.error("%s", exc)
+                    print()
+                    print(f"!! {exc}", flush=True)
+                    print(
+                        "   Se detiene la corrida. Revisar con una pasada "
+                        "supervisada antes de volver a ejecutar.",
+                        flush=True,
+                    )
+                    return 2
+                except CheckNoConfirmado as exc:
+                    # Se ejecuto pero el check no aparecio, o ISEF07 no dejo
+                    # vincular. No es un fallo tecnico: es el caso que se valida
+                    # en ISEF05/PACF50 y se anota en el Sheet.
+                    _anotar(
+                        operacion, diario.Veredicto.ROJO,
+                        diario.MOTIVO_CHECK_NO_CONFIRMADO, str(exc),
+                        r=exc.resultado,
+                    )
+                    escalados.append((f"{cedula} / {objetivo}", str(exc)))
+                    log.error("%s", exc)
+                    print(f"    -> ESCALAR a {'/'.join(MODULOS_DE_ESCALADO).upper()}: {exc}", flush=True)
                 except CicloAbierto as exc:
                     # Lo peor que puede pasar: el estudiante quedo desvinculado.
-                    abiertos.append(cedula)
+                    _anotar(
+                        operacion, diario.Veredicto.ROJO,
+                        diario.MOTIVO_CICLO_ABIERTO, str(exc),
+                    )
+                    abiertos.append(f"{cedula} / {objetivo}")
                     log.error("%s", exc)
                     print(f"    !! {exc}", flush=True)
                 except ErrorEjecucionSinu as exc:
                     detenidos.append((cedula, str(exc)))
                     log.error("%s: %s", cedula, exc)
+                    # No es un escalado: es que la automatizacion no pudo
+                    # operar. Anotarlo como 'check-no-confirmado' mandaba a
+                    # validar en ISEF05/PACF50 algo que ni se intento.
+                    _anotar(
+                        operacion, diario.Veredicto.ROJO,
+                        diario.MOTIVO_FALLO_TECNICO, str(exc),
+                        r=getattr(exc, "resultado", None),
+                    )
         except Exception:
             log.exception("Fallo inesperado durante la etapa 4")
             return 1
@@ -368,6 +585,23 @@ def main() -> int:
         print(f"Detenidos         : {len(detenidos)}")
         for cedula, motivo in detenidos[:10]:
             print(f"  {cedula}: {motivo[:90]}")
+    if escalados:
+        print()
+        print(
+            f"-> {len(escalados)} ESTUDIANTES A VALIDAR EN "
+            f"{'/'.join(MODULOS_DE_ESCALADO).upper()}:"
+        )
+        for cedula, motivo in escalados[:10]:
+            print(f"   {cedula}: {motivo[:110]}")
+        print(
+            "   ISEF07 ejecuto la accion y el check 'Vinculado?' no quedo puesto "
+            "(o no dejo vincular)."
+        )
+        print(
+            f"   Hay que abrir {' y '.join(m.upper() for m in MODULOS_DE_ESCALADO)}, "
+            "validar el check en Moodle y anotarlo en el Sheet del dia."
+        )
+        print(f"   Registro: {RUTA_ESCALADO}")
     if abiertos:
         print()
         print(f"!! {len(abiertos)} ESTUDIANTES QUEDARON DESVINCULADOS: {', '.join(abiertos)}")
@@ -377,6 +611,8 @@ def main() -> int:
         pass
     print()
     print(f"Log de la corrida: {archivo_log}")
+    # Los escalados NO hacen fallar la corrida: son un desenlace previsto que
+    # requiere una persona, no un error del robot. Los ciclos abiertos si.
     return 1 if abiertos else 0
 
 

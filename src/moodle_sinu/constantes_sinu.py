@@ -45,9 +45,15 @@ ACTIVIDAD_VINCULACION_MASIVA = "isef06"
 # Grillas y controles de ISEF07
 # ---------------------------------------------------------------------------
 
-#: Grilla superior. Se filtra por la columna "No. Identificacion" y NADA MAS:
-#: COD_MATERIA no es clave de busqueda aqui. Al seleccionar la fila del
-#: estudiante se carga sola la grilla de Grupos con sus asignaturas del periodo.
+#: Grilla superior. Se filtra por la columna "No. Identificacion". Al
+#: seleccionar la fila del estudiante se carga sola la grilla de Grupos con sus
+#: asignaturas del periodo.
+#:
+#: Aqui decia "y NADA MAS: COD_MATERIA no es clave de busqueda aqui". Cierto
+#: para ESTA grilla, pero se leyo como que la materia no era filtrable en
+#: ninguna parte -- y la grilla GRUPOS si se filtra por ella. Ese filtro es lo
+#: que permite cumplir la regla del proceso (tocar solo la materia del
+#: reporte). Comprobado en produccion el 03/09/2026.
 GRILLA_ESTUDIANTES = "Estudiantes"
 COLUMNA_FILTRO_CEDULA = "No. Identificación"
 
@@ -97,12 +103,33 @@ PERIODO_SE_FIJA_UNA_VEZ = True
 #: significa detenerse y avisar: son ajustes reales de matricula.
 FILAS_ESPERADAS_POR_CEDULA = 1
 
-#: La referencia es explicita: no se comprueba el check "Vinculado?" fila por
-#: fila, porque el dueno del proceso valida al final con un reporte aparte.
-#: OJO: esto choca con el arbol de decision de la Fase 2 documentado en el
-#: README, que classifica los casos 1/2/3 leyendo justamente ese check y el de
-#: "Curso en moodle?". Ver la seccion "Conflicto pendiente" del README.
-VERIFICAR_CHECK_VINCULADO = False
+#: Se comprueba el check "Vinculado?" DESPUES de cada accion, materia por
+#: materia. No es una preferencia: es la unica forma de saber si la accion hizo
+#: lo que dijo.
+#:
+#: Historia de este valor, porque estuvo en False y estaba mal:
+#:
+#: `references/vinculacion-moodle.md` dice "no verificar el check fila por
+#: fila", y de ahi salio el False. Pero eso describe lo que la PERSONA se ahorra
+#: cuando valida al final con un reporte aparte -- no lo que el robot puede
+#: permitirse. El dialogo "Proceso terminado" de ISEF07 confirma que el proceso
+#: CORRIO, no que la materia quedara vinculada: son cosas distintas, y la
+#: segunda es la que importa.
+#:
+#: Aclaracion del dueno del proceso (03/09/2026): tras desvincular hay que
+#: esperar la confirmacion de la desvinculacion, y tras vincular la del
+#: vinculado, antes de pasar al siguiente. Y si vinculado no aparece el check
+#: -- o ISEF07 no deja vincular -- se abre ISEF05 y PACF50 para validar el
+#: check en Moodle y se registra en Google Sheets.
+VERIFICAR_CHECK_VINCULADO = True
+
+#: Intentos del vincular antes de dar el check por imposible y escalar. Cada
+#: intento vuelve a leer la grilla: sin relectura no hay nada que reintentar.
+INTENTOS_HASTA_ESCALAR = 3
+
+#: Modulos que se consultan cuando el check no aparece. SOLO LECTURA -- la
+#: matriz de `restricciones_sinu` lo sigue impidiendo escribir en ellos.
+MODULOS_DE_ESCALADO = (ACTIVIDAD_INTEGRACION_MASIVA, ACTIVIDAD_PROGRAMACION_GRUPOS)
 
 
 # ---------------------------------------------------------------------------

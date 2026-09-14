@@ -1,8 +1,13 @@
 """Tests del plan de vinculacion en SINU.
 
-Fijan las dos reglas que vienen de la skill de negocio `cun-sigwt-matricula` y
-que no se deducen del reporte: la unidad de trabajo es el estudiante (no la
-fila) y el periodo se fija una vez por sesion (de ahi la agrupacion por lotes).
+Fijan las dos reglas del proceso que no se deducen del reporte: la unidad de
+trabajo es **(cedula, materia)** -- una operacion por fila -- y el periodo se
+fija una vez por sesion (de ahi la agrupacion por lotes).
+
+La primera cambio el 03/09/2026. Antes la unidad era el estudiante, porque se
+creia que ISEF07 vinculaba todas sus asignaturas de golpe; esa premisa venia de
+la referencia de negocio, era falsa, y agrupar por cedula era justo lo que hacia
+perder la materia de vista.
 """
 
 from __future__ import annotations
@@ -62,21 +67,27 @@ class TestExtraerCedulas:
 
 
 class TestUnidadDeTrabajo:
-    """La unidad es el estudiante, no la fila (SKILL.md)."""
+    """La unidad es (cedula, materia): una operacion por fila del reporte."""
 
-    def test_un_estudiante_con_varias_materias_es_una_operacion(self):
-        # ISEF07 vincula todas las asignaturas del periodo de una vez.
+    def test_un_estudiante_con_varias_materias_son_varias_operaciones(self):
+        """La correccion del 03/09/2026.
+
+        Antes esto era UNA operacion, porque se creia que un solo vincular
+        cubria las tres asignaturas. Cuesta el triple, y toca exactamente lo
+        que el reporte pide.
+        """
         filas = [
             _fila(2, "111", materia="A1I01"),
             _fila(3, "111", materia="B2J02"),
             _fila(4, "111", materia="C3K03"),
         ]
         plan = construir_plan(_resultado(filas))
-        assert plan.n_operaciones == 1
+        assert plan.n_operaciones == 3
         assert plan.n_filas_cubiertas == 3
-        operacion = plan.lotes[0].operaciones[0]
-        assert operacion.n_materias == 3
-        assert operacion.filas == (2, 3, 4)
+        operaciones = plan.lotes[0].operaciones
+        assert [o.cod_materia for o in operaciones] == ["A1I01", "B2J02", "C3K03"]
+        assert [o.fila for o in operaciones] == [2, 3, 4]
+        assert all(o.n_materias == 1 for o in operaciones)
 
     def test_las_filas_omitidas_no_entran(self):
         filas = [_fila(2, "111"), _fila(3, "222", omitida=True)]
@@ -180,7 +191,9 @@ class TestResumen:
     def test_avisa_de_los_estudiantes_con_varias_materias(self):
         filas = [_fila(2, "111", materia="A"), _fila(3, "111", materia="B")]
         texto = formatear_plan(construir_plan(_resultado(filas)))
-        assert "una vez" in texto.lower()
+        assert "mas de una asignatura" in texto.lower()
+        # Y deja claro que son operaciones separadas, no una sola pasada.
+        assert "aparte" in texto.lower()
 
     def test_plan_vacio_no_revienta(self):
         texto = formatear_plan(construir_plan(_resultado([])))

@@ -45,14 +45,12 @@ from moodle_sinu.config import (  # noqa: E402
     Config,
     asegurar_directorios,
 )
-from moodle_sinu.constantes import Caso, Validacion  # noqa: E402
 from moodle_sinu.lector_reporte import ErrorEstructuraReporte  # noqa: E402
 from moodle_sinu.constantes_sinu import ACTIVIDAD_VINCULACION  # noqa: E402
 from moodle_sinu.lector_sinu import (  # noqa: E402
     ErrorLecturaSinu,
     EstudianteAmbiguo,
     entrar_en_modulo,
-    esperar_sin_cargas,
     fijar_periodo,
     leer_estudiante,
 )

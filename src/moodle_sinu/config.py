@@ -23,6 +23,44 @@ DIR_LOGS = RAIZ / "logs"
 
 RUTA_ENV = DIR_CONFIG / ".env"
 
+#: Raiz de la CA que intercepta el HTTPS en esta maquina. Kaspersky Endpoint
+#: Security analiza el trafico cifrado: reemite los certificados (se vio uno
+#: para *.google.com firmado por su propia CA) y deja su raiz en el almacen de
+#: Windows. Chrome y Python la aceptan porque leen ese almacen; Playwright NO,
+#: porque su driver de Node trae su propio juego de CAs. El sintoma es
+#: "self-signed certificate in certificate chain" en `page.request.get`, y el
+#: 07/09/2026 dejo 13 matriculas sin procesar en 3 periodos: el navegador
+#: entraba en SINU sin problema y solo fallaba la lectura del Sheet por CSV.
+#: Se exporta desde PowerShell con:
+#:   Get-ChildItem Cert:\LocalMachine\Root |
+#:     Where-Object { $_.Subject -like "*Kaspersky*" }
+RUTA_CA_CORPORATIVA = DIR_CONFIG / "ca_kaspersky.pem"
+
+
+def confiar_en_ca_corporativa() -> Path | None:
+    """Ensena a Playwright la CA corporativa, si esta a mano.
+
+    Tiene que correr ANTES de `sync_playwright()`: el driver de Node lee
+    NODE_EXTRA_CA_CERTS al arrancar. Por eso se invoca al importar este modulo,
+    que es lo primero que carga cualquier script del proyecto.
+
+    Se prefiere esto a `ignore_https_errors=True`: anadir una raiz concreta
+    mantiene la validacion del certificado, mientras que desactivarla la quita
+    entera y haria pasar por buena cualquier interceptacion, no solo la
+    conocida.
+
+    Devuelve la ruta usada, o None si no habia nada que hacer.
+    """
+    if os.environ.get("NODE_EXTRA_CA_CERTS"):
+        return None  # alguien ya lo fijo a mano; no se pisa
+    if not RUTA_CA_CORPORATIVA.is_file():
+        return None  # otra maquina, o sin interceptacion: nada que anadir
+    os.environ["NODE_EXTRA_CA_CERTS"] = str(RUTA_CA_CORPORATIVA)
+    return RUTA_CA_CORPORATIVA
+
+
+confiar_en_ca_corporativa()
+
 
 def cargar_env(ruta: Path | None = None) -> None:
     """Carga config/.env si existe. No falla si aun no se ha creado."""
@@ -54,6 +92,16 @@ def _texto_opcional(nombre: str) -> str | None:
     """Texto desde el entorno, o None si la variable esta ausente o vacia."""
     valor = os.getenv(nombre, "").strip()
     return valor or None
+
+
+def _lista(nombre: str) -> tuple[str, ...]:
+    """Lista separada por comas o punto y coma. Vacia si no hay nada.
+
+    Se admiten los dos separadores porque los correos se copian de Outlook, que
+    usa punto y coma.
+    """
+    crudo = os.getenv(nombre, "").replace(";", ",")
+    return tuple(x.strip() for x in crudo.split(",") if x.strip())
 
 
 @dataclass(frozen=True)
@@ -170,6 +218,78 @@ class Config:
     """Plazo de la exportacion. Con ~1300 filas la generacion del .xlsx no es
     inmediata; el defecto de 30s de Playwright se queda corto."""
 
+    # --- Avisos (flujo desatendido de las 9:00) ---
+    notificar_webhook: str | None = None
+    """URL de webhook entrante de Teams o Slack.
+
+    Es el canal preferido: una sola URL, sin contrasenas que rotar, y el
+    destino va dentro del propio webhook. Con esto configurado no hace falta
+    nada de SMTP."""
+
+    notificar_smtp_servidor: str | None = None
+    notificar_smtp_puerto: int = 587
+    """587 para STARTTLS, 465 para SSL directo. El modulo elige segun esto."""
+
+    notificar_smtp_usuario: str | None = None
+    notificar_smtp_password: str | None = None
+    notificar_smtp_remitente: str | None = None
+    """De donde sale el correo. Si esta vacio se usa el usuario."""
+
+    notificar_destinatarios: tuple[str, ...] = ()
+    """A quien se avisa. Sin esto NO se manda correo, aunque haya servidor:
+    mandar un aviso a nadie es igual de inutil que no mandarlo, pero parece
+    que si se hizo."""
+
+    notificar_calendar: bool = True
+    """Avisar creando UN evento puntual en Google Calendar, por el navegador.
+
+    Activo por defecto porque es el unico canal que no pide credenciales
+    nuevas: la sesion de Google ya vive en el perfil de Chrome. NO programa
+    nada a futuro ni crea eventos recurrentes -- escribe solo en el instante
+    en que ocurre el aviso. La tarea de las 9:00 es del Programador de
+    Windows, no de Calendar."""
+
+    notificar_invitados: tuple[str, ...] = ()
+    """Correos que se anaden como invitados del evento. Google les manda su
+    propia invitacion, que es como el aviso llega a otras personas sin montar
+    un servidor de correo."""
+
+    notificar_calendar_adelanto_min: int = 2
+    """Minutos que se adelanta el evento para que el recordatorio por defecto
+    tenga margen de dispararse. Un recordatorio cuyo momento ya paso no salta,
+    asi que a 0 el aviso puede no llegar nunca a la pantalla."""
+
+    # --- El cerrojo del tablero ---
+    cerrojo_espera_min: int = 90
+    """Ventana de gracia del cerrojo: cuantos minutos se reintenta la lectura
+    antes de dar el tablero por desactualizado.
+
+    NO es un adorno. El 09/09/2026 a las 08:05 el tablero aun decia 8/9/26, y
+    el dia anterior a las 15:16 ya decia 8/9/26: el refresco cae en algun
+    momento de la manana y puede ser DESPUES de las 9:00. Con una sola lectura,
+    la tarea de las 9:00 encontraria datos viejos todos los dias y mandaria una
+    alerta diaria sin procesar nunca nada -- la alerta se volveria ruido y la
+    automatizacion, inutil.
+
+    90 minutos cubre hasta las 10:30 con la tarea a las 9:00. Subirlo cuando se
+    sepa la hora real del refresco; el log de cada corrida la deja anotada.
+    0 = una sola lectura, el comportamiento estricto."""
+
+    cerrojo_intervalo_min: int = 15
+    """Cada cuantos minutos se reintenta dentro de la ventana. Cada reintento
+    abre y cierra el navegador, asi que tampoco conviene bajarlo mucho."""
+
+    @property
+    def tiene_canal_de_aviso(self) -> bool:
+        """Si hay por donde avisar. El flujo desatendido lo comprueba ANTES de
+        arrancar: descubrir que no hay canal en el momento de tener que avisar
+        es descubrirlo tarde."""
+        return bool(
+            self.notificar_calendar
+            or self.notificar_webhook
+            or (self.notificar_smtp_servidor and self.notificar_destinatarios)
+        )
+
     @classmethod
     def desde_entorno(cls) -> Config:
         cargar_env()
@@ -205,6 +325,20 @@ class Config:
             reintentos_login=int(os.getenv("REINTENTOS_LOGIN", "1")),
             timeout_render_seg=int(os.getenv("TIMEOUT_RENDER_SEG", "120")),
             timeout_descarga_seg=int(os.getenv("TIMEOUT_DESCARGA_SEG", "300")),
+            notificar_webhook=_texto_opcional("NOTIFICAR_WEBHOOK"),
+            notificar_smtp_servidor=_texto_opcional("NOTIFICAR_SMTP_SERVIDOR"),
+            notificar_smtp_puerto=int(os.getenv("NOTIFICAR_SMTP_PUERTO", "587")),
+            notificar_smtp_usuario=_texto_opcional("NOTIFICAR_SMTP_USUARIO"),
+            notificar_smtp_password=_texto_opcional("NOTIFICAR_SMTP_PASSWORD"),
+            notificar_smtp_remitente=_texto_opcional("NOTIFICAR_SMTP_REMITENTE"),
+            notificar_destinatarios=_lista("NOTIFICAR_DESTINATARIOS"),
+            notificar_calendar=_bool("NOTIFICAR_CALENDAR", True),
+            notificar_invitados=_lista("NOTIFICAR_INVITADOS"),
+            notificar_calendar_adelanto_min=int(
+                os.getenv("NOTIFICAR_CALENDAR_ADELANTO_MIN", "2")
+            ),
+            cerrojo_espera_min=int(os.getenv("CERROJO_ESPERA_MIN", "90")),
+            cerrojo_intervalo_min=int(os.getenv("CERROJO_INTERVALO_MIN", "15")),
         )
 
 

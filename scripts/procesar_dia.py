@@ -76,6 +76,12 @@ def _argumentos() -> argparse.Namespace:
         metavar="PERIODO",
         help="Omite estos periodos (se puede repetir). Util para los ya hechos.",
     )
+    p.add_argument(
+        "--saltar-hechas",
+        action="store_true",
+        help="Se pasa tal cual a la etapa 4: omite lo que el diario ya tiene en "
+        "verde. Recomendado al reanudar una corrida interrumpida.",
+    )
     p.add_argument("--traza", action="store_true", help="Traza por periodo")
     p.add_argument("--verbose", "-v", action="store_true", help="Log en DEBUG")
     return p.parse_args()
@@ -156,6 +162,8 @@ def main() -> int:
         ]
         if args.ejecutar_de_verdad:
             orden.append("--ejecutar-de-verdad")
+        if args.saltar_hechas:
+            orden.append("--saltar-hechas")
         if args.traza:
             orden.append("--traza")
         if args.verbose:

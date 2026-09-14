@@ -1,5 +1,11 @@
 # --- credenciales: NUNCA versionar ---
-config/.env
+# El patron cubre .env y CUALQUIER variante (.env.respaldo_*, .env.bak,
+# .env.produccion...). El 02/09/2026 un `config/.env.respaldo_20260901` se colo
+# en el primer commit y llego a GitHub con las contrasenas dentro, precisamente
+# porque aqui solo estaba listado el nombre exacto.
+# La excepcion es la plantilla, que va sin valores y SI debe versionarse.
+config/.env*
+!config/.env.example
 
 # storage_state para codegen: cookies de sesion vivas = credencial
 config/estado_sesion.json

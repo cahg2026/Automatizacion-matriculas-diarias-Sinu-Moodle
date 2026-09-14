@@ -13,10 +13,12 @@ Moodle vs. SINU de Power BI.
 |---|---|---|
 | — | **Fase 1** — parser + validación del `.xlsx` | ✅ Implementada y probada |
 | 1 | Exportación desde Power BI (Playwright) | ✅ Verificada end-to-end (21/08/2026), visible y headless |
-| 2 | Subida del Sheet a Drive (RPA, sin API) | ⚠️ Implementada — selectores sin verificar |
+| 2 | Subida del Sheet a Drive (RPA, sin API) | ✅ Verificada (03/09/2026) — **exige `--visible`**, ver *La subida no funciona sin ventana* |
 | 3a | Plan de trabajo (cédulas por periodo) | ✅ Implementado |
-| 3 | Clasificación de casos en SINU — **modo lectura** | ⚠️ Implementada — selectores sin verificar |
-| 4 | Ejecución en ISEF07 (vincular / reciclar) | ⚠️ Implementada — 3 cerrojos, selectores sin verificar |
+| 3 | Clasificación de casos en SINU — **modo lectura** | ✅ Verificada (01/09/2026): lectura real de la grilla Grupos |
+| 4 | Ejecución en ISEF07 (vincular / reciclar) | ✅ Verificada end-to-end (01/09/2026) — 3 cerrojos, `MODO_SIMULACION=false` |
+| 4b | Confirmación del check tras cada acción | ✅ Implementada (03/09/2026) — se relee la grilla, no se cree al diálogo |
+| 4c | Consulta automática de ISEF05/PACF50 + anotación en el Sheet | ⏳ **Falta** — los casos se detectan y se registran, resolverlos es manual |
 | 5 | Escritura de colores + validación en el Sheet | ⏳ |
 | 6 | Programación diaria (Task Scheduler) | ⏳ |
 
@@ -33,6 +35,256 @@ $PY = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
 
 Copy-Item config\.env.example config\.env   # y rellenar
 ```
+
+## El día completo en un comando
+
+```powershell
+# El día, de verdad. Es el comando de todas las mañanas.
+.\.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad
+
+# Ensayo: recorre todo y dice qué haría, sin escribir en SINU
+.\.venv\Scripts\python.exe scripts\dia_completo.py
+
+# Solo hasta dejar el Sheet subido, sin tocar SINU
+.\.venv\Scripts\python.exe scripts\dia_completo.py --hasta-subir
+```
+
+`scripts/dia_completo.py` encadena las seis etapas. Su razón de ser es que **no
+haya que copiar valores de una salida a la siguiente**: eso era lo que
+convertía el proceso diario en algo manual y frágil.
+
+| Paso | Qué |
+|---|---|
+| 0 | Perfil de navegador y **sesión de Google, comprobada de verdad** |
+| 1 | **Cerrojo**: ¿se actualizó el tablero HOY? Si no, avisa y **no exporta** |
+| 2 | Power BI → `.xlsx` en `data\raw\` |
+| 3 | Fase 1: calidad, orden A–Z por periodo, subida del Sheet |
+| 4 | ISEF07: procesa las matrículas, periodo por periodo |
+| 5 | Escribe la columna Q y sube el Sheet marcado |
+| 6 | Cierre: ciclos a medias, escalados y aviso con métricas |
+
+### Por qué es Python y no PowerShell
+
+Hubo un `dia_completo.ps1`. El 08/09/2026 Kaspersky empezó a bloquearlo:
+
+```
+dia_completo.ps1: 1 Carácter: 1
+Este script contiene elementos malintencionados y ha sido bloqueado
+por el software antivirus.
+FullyQualifiedErrorId : ScriptContainedMaliciousContent
+```
+
+El bloqueo es de AMSI y ocurre al **analizar** el archivo, antes de su primera
+instrucción: no dejaba ni bitácora, así que el fallo era mudo — devolvía código
+1 y cero salida. Se descubrió capturando `stderr`, que es donde AMSI escribe.
+
+**No se reescribió el `.ps1` "para que no lo detecte".** Remodelar código hasta
+esquivar una regla de antivirus es, en la forma, evasión de detección, y en el
+fondo es adivinar contra una heurística opaca que puede cambiar cualquier día.
+Se cambió de tecnología, que es lo que resuelve el problema.
+
+La migración además dio tres cosas que el `.ps1` no podía:
+
+- **La lógica del día entra en pytest.** Sus tres defectos del 07/09/2026 —la
+  bitácora en UTF-16, la rotación del diario colocada antes de tiempo y el
+  `--saltar-hechas` que no se pasaba nunca— vivían todos en la capa que no se
+  podía probar. Ahora hay 19 pruebas sobre esa lógica.
+- **`subprocess` recibe listas de argumentos**, así que no hay shell que
+  reinterprete comillas. Con una ruta que tiene espacios *y* acentos, eso quita
+  toda una clase de fallos.
+- **La bitácora recoge stdout y stderr.** El `.ps1` perdía stderr, que es justo
+  donde Python escribe sus logs.
+
+Los dos `.ps1` quedan en `docs/retirado/` como referencia histórica, sin uso.
+
+### Contar cookies no dice si la sesión sirve
+
+El 08/09/2026 el paso 0 dio el visto bueno con la sesión de Google **muerta**.
+El perfil tenía 88 cookies y las de sesión «todas presentes» — y Google las
+había invalidado del lado del servidor. Resultado: se exportó Power BI, se
+abrió el cerrojo de escritura, y el fallo salió en el paso 3 al subir el Sheet.
+
+**Una cookie presente dice que el navegador la guarda, no que el servidor la
+acepte.** Lo único que lo dice es pedirle una página.
+
+Por eso `probar_perfil.py` ahora navega a Drive y mira si redirige:
+
+| Salida | Significado |
+|---|---|
+| `0` | Drive respondió sin pedir login: la sesión sirve |
+| `5` | la sesión no sirve → el flujo se detiene **en el paso 0** |
+
+Y distingue tres motivos, porque cada uno se arregla de otra forma:
+
+- **Reverificar identidad** (`confirmidentifier`) — «Demuestra que eres tú».
+  Es el segundo factor; solo lo resuelve una persona. Fue el caso del 08/09.
+- **Elegir cuenta** (`accountchooser`) — la sesión existe, hay varias cuentas.
+  Fijar `/u/0/` no lo salta.
+- **Sin sesión** (`signin`, `ServiceLogin`) — no hay sesión válida.
+
+Se resuelve una vez, a mano, y queda guardada en el perfil:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\probar_perfil.py --iniciar-sesion
+```
+
+`--sin-exigir-sesion` desactiva la comprobación, para diagnosticar el perfil en
+sí sin que la sesión decida el resultado.
+
+### El cerrojo del día: no procesar datos de ayer
+
+Antes de exportar, `scripts/verificar_actualizacion.py` lee del tablero el
+texto `Datos actualizados el 8/9/26` y lo compara con hoy.
+
+De dónde sale ese dato **está medido, no supuesto** (se sondeó con
+`scripts/sondear_actualizacion.py` el 08/09/2026):
+
+- El `.xlsx` exportado **no** lo trae: su única fila de pie lista los filtros.
+- Las tarjetas del tablero tampoco: solo hay `MATRICULADO` y `NO MATRICULADO`.
+- Sí lo trae la **barra de herramientas superior** de Power BI Service, a la
+  derecha de `ValidacionMoodle |` y a la izquierda del buscador global. **No
+  está en el lienzo del informe**, y por eso ningún localizador de visuales lo
+  ve. Cadena de ancestros medida:
+
+```
+SPAN.data-updated          ← el texto: "Datos actualizados el 8/9/26"
+ └ BUTTON.info-bar         ← de aquí sale la flecha: es un desplegable
+   └ ARTIFACT-INFO
+     └ DIV.topNavLeft
+       └ HEADER
+         └ TRIDENT-HEADER#header   ← la barra principal
+```
+
+El localizador es **`#header span.data-updated`**, no el texto. La clase es
+semántica y no depende del idioma; buscar «Datos actualizados» se rompería el
+día que la interfaz saliera en inglés. Se acota a `#header` para que no pueda
+confundirse nunca con contenido del lienzo.
+
+Hay tres capas: la clase, luego el texto dentro de `#header`, y por último un
+barrido de la página. El log dice por cuál entró — si algún día dice
+«BARRIDO», es señal de que conviene volver a sondear. Una excepción importante:
+si el nodo aparece pero su texto **no** se puede interpretar, se falla en vez de
+seguir probando localizadores. Eso significa que el tablero cambió de formato, y
+buscar hasta encontrar cualquier fecha que encaje sería peor que decirlo.
+
+Hay que esperar el lienzo antes de mirar. Sobre la pantalla de carga de Power BI
+todo sale vacío, y eso se leería como «no hay fecha» en vez de «aún no ha
+cargado»: pasó en el primer sondeo, y lo delató la captura de pantalla.
+
+La fecha se interpreta **día/mes/año** porque el navegador se abre con
+`POWERBI_IDIOMA=es-CO`. Hay una guarda: si sale una fecha futura se falla en vez
+de devolver un dato del revés, que es lo que ocurriría si el idioma cambiara.
+
+Códigos de salida, y por qué son tres y no dos:
+
+| | |
+|---|---|
+| `0` | coincide con hoy → seguir con la descarga |
+| `3` | **anterior** a hoy → alerta crítica y parar |
+| `4` | **no se pudo leer**, o fecha posterior a hoy → alerta distinta y parar |
+
+El 3 y el 4 van aparte porque la acción de la persona difiere: en un caso se
+reclama al departamento de datos; en el otro se mira si el tablero cambió de
+forma. **No saberlo no es lo mismo que saber que está viejo.**
+
+El criterio de falla es «**anterior** a hoy», no «distinto de hoy», y la
+diferencia importa: una fecha *posterior* no es un tablero viejo, es una lectura
+girada (día y mes al revés), y se rechaza como ilegible en vez de anunciarse
+como retraso.
+
+### Avisos
+
+Dos canales, los dos por `config/.env`, y un respaldo que siempre funciona.
+
+```
+NOTIFICAR_WEBHOOK=https://<...>          # Teams o Slack. Recomendado.
+
+NOTIFICAR_SMTP_SERVIDOR=smtp.office365.com
+NOTIFICAR_SMTP_USUARIO=<cuenta>
+NOTIFICAR_SMTP_PASSWORD=<contraseña de aplicación>
+NOTIFICAR_DESTINATARIOS=alguien@cun.edu.co
+```
+
+El webhook es el camino corto: una URL, sin contraseñas que rotar, y el destino
+va dentro. Con Microsoft 365, el correo exige una **contraseña de aplicación**:
+la organización pide segundo factor y el SMTP plano no lo pasa.
+
+**Para avisar a más personas sin montar nada**, se añaden como invitados del
+evento de Calendar y Google manda su propia invitación:
+
+```
+NOTIFICAR_INVITADOS=alguien@cun.edu.co, otro@cun.edu.co
+```
+
+Es el camino de entrega más fiable que hay aquí: no depende de ningún servidor
+nuestro. Aplica a los dos avisos, el de éxito y el de tablero sin actualizar.
+
+Cuatro avisos:
+
+| Evento | Asunto |
+|---|---|
+| Tablero sin actualizar | `⚠️ ALERTA: Tablero Power BI sin actualizar - <fecha>` |
+| No se pudo leer la fecha | `⚠️ ALERTA: no se pudo leer la fecha del tablero - <fecha>` |
+| Flujo terminado | `✅ ÉXITO: Flujo de procesamiento finalizado - <fecha>` |
+| Flujo incompleto | `❌ FALLO: Flujo de procesamiento incompleto - <fecha>` |
+
+El de fallo no estaba en el encargo y hace falta: sin él, en desatendido un
+fallo a mitad se ve **exactamente igual** que un día sin novedades — silencio.
+
+Dos decisiones del módulo que conviene conocer:
+
+- **Sin canal configurado lo dice y devuelve «no enviado».** Callarse parecería
+  que avisó, y eso es peor que no avisar.
+- **Nunca lanza excepción.** Un aviso que revienta se llevaría por delante justo
+  el flujo al que intenta avisar; los problemas van en el resultado.
+
+Las métricas del aviso **no se pasan por parámetro**: `resumen_dia.py` las lee
+del diario, así que cuentan lo que de verdad pasó. Y los rojos van agrupados por
+materia y grupo, que es lo que convierte una lista de 15 personas en un
+diagnóstico de 2 grupos — el 07/09/2026 fue exactamente así.
+
+### Ejecución desatendida a las 9:00, de lunes a viernes
+
+```powershell
+# Estreno prudente: unos días recorriendo el flujo sin escribir en SINU
+.\.venv\Scripts\python.exe scripts\programar_9am.py --simulacion
+
+# Producción
+.\.venv\Scripts\python.exe scripts\programar_9am.py
+
+# Quitarla
+.\.venv\Scripts\python.exe scripts\programar_9am.py --quitar
+```
+
+El disparador es **semanal con lunes a viernes**, no diario: el proceso es de
+gestión académica y en fin de semana no hay quien atienda una alerta. En el
+Programador se ve como `DaysOfWeek = 62`, que es la máscara exacta de L–V
+(2+4+8+16+32), sin sábado ni domingo.
+
+El **primer disparo** se calcula saltando el fin de semana: hoy si la hora aún
+no ha pasado, y si no el siguiente día laborable. La primera versión ponía
+siempre «mañana», y registrada un miércoles a las 08:12 para las 09:00 dejaba
+la tarea para el jueves — se habría esperado a las 9:00 sin que pasara nada.
+
+**Programador de tareas de Windows, no `schedule`/APScheduler.** Una tarea del
+sistema sobrevive a reinicios, a cierres de sesión y a que se cierre la consola.
+Un bucle de Python vive solo mientras viva su proceso, y basta un reinicio
+nocturno para que el día siguiente no se procese y nadie se entere — que es el
+fallo que todo este montaje pretende evitar.
+
+Se registra por XML y no con `/TR`, porque el XML permite fijar los ajustes que
+de verdad deciden si la tarea corre:
+
+- **`StartWhenAvailable`** — si el equipo estaba apagado a las 9:00, corre en
+  cuanto arranque. Sin esto el día se salta sin dejar rastro.
+- **Batería** — el defecto de Windows es *no* arrancar sin corriente. En
+  portátil eso perdería el día por estar desenchufado.
+- **`InteractiveToken`** — el flujo necesita sesión interactiva: la subida a
+  Drive falla sin ventana (comprobado el 03/09/2026) y Chrome usa el perfil de
+  este usuario. Con «ejecutar aunque el usuario no haya iniciado sesión» el
+  navegador no tiene escritorio y la subida se cae.
+
+Por eso mismo: **el equipo tiene que estar encendido y con la sesión iniciada.**
 
 ## Uso — Fase 1
 
@@ -381,6 +633,28 @@ El id se lee de `https://drive.google.com/drive/folders/<ID>`.
 La sesión de Google vive en `POWERBI_PERFIL_NAVEGADOR`. Si caduca, la etapa 2
 aborta diciéndolo y se arregla ejecutando una vez con `--visible`.
 
+### La subida no funciona sin ventana
+
+**Comprobado el 03/09/2026** con dos corridas seguidas del mismo `flujo_dia.py`,
+mismo archivo y misma carpeta, cambiando *solo* el modo del navegador:
+
+| Modo | Resultado |
+|---|---|
+| `POWERBI_HEADLESS=true` (sin ventana) | `'REPORTE 03-09-2026 #198' no apareció en la carpeta tras 300s` |
+| `--visible` | Subió, convirtió a Sheet y siguió hasta ISEF07 sin tocar nada más |
+
+Lo engañoso es **cómo** falla: `expect_file_chooser` no da timeout y `set_files`
+se entrega sin error, así que parece que la subida arrancó. Lo que no ocurre
+nunca es que el archivo aparezca. Con ese síntoma es natural sospechar de los
+selectores de Drive — y no son los selectores.
+
+Ya había pasado el 01/09/2026 y se atribuyó a otra cosa: separar los dos clics
+(abrir *"Nuevo"* fuera del bloque `expect_file_chooser`) sigue siendo necesario,
+pero **no era la causa raíz** — la corrida que validó ese arreglo fue visible.
+
+**Regla:** la etapa 2 se ejecuta con `--visible`. Las etapas 1 (Power BI) y 4
+(SINU) sí funcionan sin ventana.
+
 ### Los selectores están SIN VERIFICAR
 
 A diferencia de la etapa 1, [`selectores_drive.py`](src/moodle_sinu/selectores_drive.py)
@@ -525,14 +799,55 @@ Regla de negocio (dueño del proceso, 21/08/2026), según `Vinculado?`:
 Es decir: lo ya vinculado se **recicla**, no se salta. Por eso
 `CASO_1_YA_VINCULADO` pasó de *no requerir acción* a requerirla.
 
-### Dos consecuencias que el código tiene en cuenta
+### Solo la materia del reporte — CORREGIDO el 03/09/2026
 
-**La acción es por estudiante, no por materia.** *"Vincular grupos matriculados"*
-actúa sobre todas las asignaturas del periodo a la vez; la grilla Grupos es
-informativa. Así que la regla se aplica al conjunto: **basta una materia
-vinculada para reciclar al estudiante completo**. El estado final es el buscado
-—todas vinculadas— pero el desvincular pasa también por materias que no lo
-necesitaban. Con esta pantalla no hay forma de hacerlo por materia.
+> Por la 07 únicamente se debe procesar, por estudiante, el código de la materia
+> que registre en el reporte. No otro, no todos, no algunos: únicamente el que
+> registre en el reporte.
+>
+> — dueño del proceso, 03/09/2026
+
+Hasta esa fecha aquí decía lo contrario: que la acción era *"por estudiante, no
+por materia"*, que alcanzaba todas las asignaturas del periodo a la vez, y que
+por tanto **bastaba una materia vinculada para reciclar al estudiante completo**.
+
+**Era falso.** Venía de una sola frase de
+[`references/vinculacion-moodle.md`](cun-sigwt-matricula/references/vinculacion-moodle.md)
+y se había copiado a ocho archivos. El 03/09/2026, en 5 estudiantes, hizo que se
+desvincularan y revincularan **34 asignaturas cuando correspondían 5**:
+
+| Cédula | Materia en el reporte | Asignaturas que tocó |
+|---|---|---|
+| 1000000009 | BMD01/20103 | 6 |
+| 1000000108 | IED36/30101 | 5 |
+| 1000000107 | IED36/30101 | 7 |
+| 1000000104 | IED36/30101 | 8 |
+| 1000000102 | IED36/30101 | 8 |
+
+Ninguna quedó rota —se verificó una por una—, pero el reporte no vigila esas
+materias, así que un fallo ahí habría pasado inadvertido. La referencia ya está
+corregida en su origen, y hay un test centinela
+(`test_la_premisa_falsa_no_ha_vuelto`) que falla si la frase reaparece como
+regla.
+
+**La unidad de trabajo es (cédula, materia):** una operación por fila del
+reporte. Antes de ejecutar, la grilla *Grupos* se acota por `COD_MATERIA` — ese
+paso es lo que confina la acción, y no es opcional.
+
+### Y una guarda, porque el confinamiento no está verificado
+
+Lo que **sí** está medido (03/09/2026) es que **sin acotar** la acción alcanza
+todas las asignaturas: `1000000102` pasó de 0 de 8 a 8 de 8 con una sola
+ejecución. Que acotar la grilla la confine lo afirma el dueño del proceso, pero
+nadie lo ha comprobado contra el sistema.
+
+Así que tras **cada** escritura se relee la grilla completa y se exige que
+ninguna otra asignatura haya cambiado (`AccionSeDesbordo`, constante
+`COMPROBAR_DESBORDE`). Si salta, se detiene la corrida entera con código 2.
+
+Sin esa guarda el código *parecería* trabajar por materia y seguiría haciendo el
+mismo daño, ahora invisible — que es peor que el estado anterior. Se puede apagar
+cuando el confinamiento esté confirmado en una pasada supervisada, y no antes.
 
 **El reciclado abre una ventana de riesgo.** Entre el desvincular y el vincular
 el estudiante queda **sin vincular**. Si el proceso muere ahí, acaba peor que al
@@ -548,6 +863,90 @@ empezar. De ahí tres medidas:
   código 1.
 - Al arrancar, el CLI avisa de reciclados sin cerrar de corridas anteriores.
 
+### La confirmación del check: releer, no creerle al diálogo
+
+Aclaración del dueño del proceso (03/09/2026), y es la regla que manda:
+
+> Cuando se desvincula a un estudiante, se le debe vincular nuevamente, ya que
+> ningún estudiante debe quedar desvinculado de ninguna de sus materias. […] Se
+> desvincula y **se espera a que quede confirmada la desvinculación**. Una vez se
+> tenga la confirmación, se vincula y **se espera a que quede vinculado** para
+> proceder con el siguiente.
+
+El diálogo *"Proceso terminado"* de ISEF07 **no** es esa confirmación: dice que
+el proceso corrió, no que la materia quedara vinculada. Son cosas distintas y la
+segunda es la que importa. Así que tras cada acción se vuelve a leer la grilla
+Grupos y se cuentan los checks **materia por materia**.
+
+Esto invalidó `VERIFICAR_CHECK_VINCULADO = False`, que venía de la referencia de
+negocio (*"no verificar el check fila por fila"*). Esa frase describe lo que la
+**persona** se ahorra cuando valida al final con un reporte aparte — no lo que
+el robot puede permitirse.
+
+| Desenlace | Qué significa | Qué hace el robot |
+|---|---|---|
+| Check confirmado | Todas las materias con `Vinculado?` | Cierra el ciclo y sigue |
+| `reciclado_incompleto` | El desvincular no se reflejó | Avisa y vincula igual (idempotente). **No hay daño**: el estudiante sigue vinculado |
+| `CheckNoConfirmado` | Se vinculó y el check no apareció, o ISEF07 no dejó vincular | **Escala** a ISEF05/PACF50. Cierra el ciclo o no, según lo de abajo |
+| `CicloAbierto` | No se pudo vincular ni confirmar tras desvincular | Lo peor: puede estar desvinculado. Sale con código 1 |
+
+Un fallo de **lectura** nunca abre un ciclo. Se separa a propósito: el
+01/09/2026 una alarma falsa dijo que un estudiante podía estar desvinculado y
+sus 7 asignaturas estaban intactas — y una alarma falsa en el único aviso que de
+verdad importa es peor que no tenerlo.
+
+### Una materia sin check no es siempre una urgencia
+
+`ciclos_abiertos.jsonl` existe para **una** cosa: avisar de estudiantes que
+quedaron *peor* que al empezar. Así que cuando el check no aparece hay que
+distinguir dos situaciones, y la pregunta es una sola: **¿perdió el estudiante
+algún vínculo que ya tenía?**
+
+| Situación | Ciclo | Escalado |
+|---|---|---|
+| Falta una materia que **ya venía sin check** | Se **cierra** — el estudiante está como estaba | Sí |
+| Falta una materia que **sí tenía check** al empezar | Queda **abierto** — hay que vincularla a mano | Sí |
+
+Sin esa distinción el aviso se convierte en ruido permanente:
+`reparar_desvinculados.py` recogería al estudiante en cada corrida para
+reintentar un vínculo que ISEF07 no puede hacer.
+
+**Comprobado en producción el 03/09/2026**, y el caso apareció en el 4.º
+estudiante de 69: `1000000104` (2026C) empezó con 7 de 8 vinculadas y acabó con
+7 de 8 — la que falta es `IED42/50101`, la misma. Con la primera versión de esta
+comprobación habría quedado marcado como *"puede haber quedado desvinculado"*
+para siempre. El escalado se registra en los dos casos: la materia sin check hay
+que validarla en ISEF05/PACF50 igual; lo que cambia es si además hay una
+urgencia de vinculación manual.
+
+### El escalado a ISEF05 y PACF50
+
+> Cuando en la 07 no se permite vincular, o si a pesar de haber vinculado este
+> no tiene el check, se procede a abrir la 05 y la 50 para realizar la
+> validación del check en Moodle y dejar registrada esta información en Google
+> Sheets.
+
+**Lo que está hecho:** el robot detecta el caso, reintenta el vincular
+`INTENTOS_HASTA_ESCALAR` veces, y lo anota en
+`logs/escalado_isef05_pacf50.jsonl` con la cédula, el periodo, el motivo y las
+asignaturas concretas que quedaron sin check. Al final de la corrida el CLI los
+lista aparte de los fallos, porque el siguiente paso es distinto: consultar, no
+reintentar. Estos casos **no** hacen fallar la corrida (código 0): son un
+desenlace previsto que necesita a una persona.
+
+**Lo que falta (4c):** abrir ISEF05 y PACF50 automáticamente y escribir el
+resultado en el Sheet. Hoy eso es manual. Los tres motivos que se registran:
+
+| Motivo | Origen |
+|---|---|
+| `isef07-no-permite-vincular` | El desplegable de acción no se pudo dejar puesto |
+| `vinculado-sin-check` | Se ejecutó el vincular y el check no apareció |
+| `check-no-verificable` | No se pudo releer la grilla, así que no se sabe |
+
+ISEF05 y PACF50 siguen siendo **solo lectura** en
+[`restricciones_sinu.py`](src/moodle_sinu/restricciones_sinu.py). El escalado no
+relaja esa barrera: se consultan, no se tocan.
+
 ### Tres cerrojos, hay que abrir los tres
 
 1. `MODO_SIMULACION=false` en `config/.env`
@@ -559,11 +958,15 @@ pasando `page=None`: en simulación no llega a tocar el navegador.
 
 ```powershell
 # Ensayo: recorre y reporta, no modifica nada
-.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py dataaweporte.xlsx `
+.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py data
+aw
+eporte.xlsx `
     --periodo 26V05 --limite 1 --visible --traza
 
 # Real (requiere MODO_SIMULACION=false)
-.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py dataaweporte.xlsx `
+.\.venv\Scripts\python.exe scripts\ejecutar_sinu.py data
+aw
+eporte.xlsx `
     --periodo 26V05 --limite 1 --ejecutar-de-verdad --visible --traza
 ```
 
@@ -574,12 +977,15 @@ contiene el desplegable *"Acción a realizar"* y el botón de ejecutar. La etapa
 **no lo importa**, y hay tests que lo comprueban leyendo el código fuente: no
 puede pulsar lo que no sabe localizar.
 
-**Están sin verificar**, y uno es especialmente frágil: la referencia describe el
-botón de ejecutar como *"el primer icono (el de más arriba de tres, tipo
-engranaje) a la izquierda del desplegable"* — posicional y sin texto. Antes de
-usar la etapa 4 en real hay que grabar una pasada **consciente** sobre un
-estudiante de prueba: `grabar_sinu.ps1` avisa de no tocar esos controles porque
-está pensado para la etapa 3.
+**Verificados en real el 01/09/2026**, no por grabación sino por uso: 12
+estudiantes procesados en ISEF07, 12 ciclos cerrados. El que se temía frágil
+—el botón de ejecutar, que la referencia describe como *"el primer icono (el de
+más arriba de tres, tipo engranaje) a la izquierda del desplegable"*, posicional
+y sin texto— acabó localizándose por su imagen (`icon_start.png`) y funcionó en
+todas las corridas.
+
+Lo que sigue **sin verificar** es la etapa 2 (Drive): esos selectores no se han
+ejercitado contra la UI real.
 
 Antes de cada ejecución se comprueba que el desplegable quedó con la acción
 pedida, y se aborta si muestra otra: ejecutar con la acción equivocada es el
@@ -592,16 +998,20 @@ Fuente: [`cun-sigwt-matricula/SKILL.md`](cun-sigwt-matricula/SKILL.md) y
 Documentan el flujo tal como se ejecuta a mano, e introdujeron **tres
 correcciones al diseño** que no se deducían del reporte.
 
-### 1. La unidad de trabajo es el estudiante, no la fila
+### 1. La unidad de trabajo es (cédula, materia), no el estudiante
 
-El reporte trae **una fila por asignatura matriculada**, pero
-*"Vincular grupos matriculados"* de ISEF07 actúa sobre el estudiante completo:
-vincula de golpe **todas** sus asignaturas del periodo activo. Procesar por fila
-repetiría el mismo estudiante una vez por materia, y cada repetición cuesta
-15-40 s.
+El reporte trae **una fila por asignatura matriculada**, y cada fila es una
+operación: se acota la grilla *Grupos* a ese `COD_MATERIA` y se actúa solo sobre
+él.
 
-Medido sobre el reporte del 21/08/2026: **164 filas procesables → 84
-operaciones** (12 estudiantes traen más de una asignatura, hasta 8).
+Esta regla decía justo lo contrario hasta el 03/09/2026 — que la unidad era el
+estudiante, porque un solo *vincular* cubría todas sus asignaturas. Agrupar por
+cédula era precisamente lo que hacía perder la materia de vista. Ver
+*Solo la materia del reporte* en la etapa 4.
+
+Coste del cambio: un estudiante con varias filas ahora cuesta una pasada por
+fila. Sobre el reporte del 21/08/2026 eran **164 filas procesables → 84
+operaciones** agrupando; sin agrupar son 164.
 
 En ISEF07 la grilla *Estudiantes* se filtra **solo** por `No. Identificación`:
 `COD_MATERIA` no es clave de búsqueda ahí, al contrario de lo que suponía
@@ -966,10 +1376,16 @@ moodle-sinu-automation/
 
 - Credenciales solo en `config/.env`, ignorado por Git. **No hay credenciales
   de Google**: la sesión de Drive vive en el perfil del navegador.
+- El patrón de `.gitignore` es `config/.env*` con `!config/.env.example`, **no**
+  el nombre exacto `config/.env`. La razón: el 02/09/2026 un
+  `config/.env.respaldo_20260901` se coló en el primer commit y llegó a GitHub
+  con las contraseñas dentro, porque el patrón estrecho no lo cubría. Cualquier
+  respaldo del `.env` queda ahora ignorado por construcción.
 - `data/` y `logs/` están ignorados: contienen datos personales de estudiantes.
-- `MODO_SIMULACION=true` por defecto — la acción irreversible
-  "Vincular grupos matriculados" no se ejecuta hasta que la clasificación
-  de casos esté validada contra revisión manual.
+- `MODO_SIMULACION=true` en la **plantilla**, para que una copia recién hecha no
+  pueda escribir sin que alguien lo decida. En **esta** máquina está en `false`
+  desde el 01/09/2026: la etapa 4 ya ejecuta de verdad. Siguen haciendo falta
+  `--ejecutar-de-verdad` y `--periodo`.
 - Las grabaciones de `playwright codegen` (`*_grabado.py`) llevan credenciales
   en texto plano. Se borran tras extraer los selectores y se rota la contraseña
   usada.
