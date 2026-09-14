@@ -106,7 +106,46 @@ def primer_disparo(hora: str, ahora: datetime | None = None) -> datetime:
     return candidato
 
 
-def construir_xml(hora: str, *, simulacion: bool, descripcion: str) -> str:
+def _disparador_xml(arranque: datetime, una_vez: bool) -> str:
+    """El bloque <Triggers> de la tarea.
+
+    "Un solo dia" NO es la tarea semanal desactivada: es un disparador de una
+    sola vez. La diferencia importa -- asi corre el dia pedido y despues se
+    queda quieta SOLA, sin que nadie tenga que acordarse de apagarla. Y
+    acordarse es justo lo que falla: el cerrojo MODO_SIMULACION estuvo abierto
+    seis dias (01-07/09/2026) porque dependia de que alguien lo revirtiera.
+    """
+    inicio = f"      <StartBoundary>{arranque:%Y-%m-%dT%H:%M:%S}</StartBoundary>"
+    if una_vez:
+        return "\n".join(
+            (
+                "    <TimeTrigger>",
+                inicio,
+                "      <Enabled>true</Enabled>",
+                "    </TimeTrigger>",
+            )
+        )
+
+    dias = "\n".join(f"          <{d} />" for d in DIAS_LABORABLES)
+    return "\n".join(
+        (
+            "    <CalendarTrigger>",
+            inicio,
+            "      <Enabled>true</Enabled>",
+            "      <ScheduleByWeek>",
+            "        <DaysOfWeek>",
+            dias,
+            "        </DaysOfWeek>",
+            "        <WeeksInterval>1</WeeksInterval>",
+            "      </ScheduleByWeek>",
+            "    </CalendarTrigger>",
+        )
+    )
+
+
+def construir_xml(
+    hora: str, *, simulacion: bool, descripcion: str, una_vez: bool = False
+) -> str:
     """El XML de la tarea.
 
     Los ajustes NO son adorno:
@@ -138,20 +177,7 @@ def construir_xml(hora: str, *, simulacion: bool, descripcion: str) -> str:
     <Description>{escape(descripcion)}</Description>
   </RegistrationInfo>
   <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>{arranque:%Y-%m-%dT%H:%M:%S}</StartBoundary>
-      <Enabled>true</Enabled>
-      <ScheduleByWeek>
-        <DaysOfWeek>
-          <Monday />
-          <Tuesday />
-          <Wednesday />
-          <Thursday />
-          <Friday />
-        </DaysOfWeek>
-        <WeeksInterval>1</WeeksInterval>
-      </ScheduleByWeek>
-    </CalendarTrigger>
+{_disparador_xml(arranque, una_vez)}
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -219,6 +245,13 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     p.add_argument(
+        "--una-vez",
+        action="store_true",
+        help="Programa UNA sola ejecucion en vez de la repeticion de lunes a "
+        "viernes. La tarea corre ese dia y se queda quieta sola, sin que nadie "
+        "tenga que acordarse de apagarla.",
+    )
+    p.add_argument(
         "--solo-mostrar",
         action="store_true",
         help="Imprime lo que haria y no toca el Programador.",
@@ -245,7 +278,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # --- Comprobaciones previas --------------------------------------------
-    print(f"Programando el flujo a las {args.hora}, de lunes a viernes")
+    cuando = "UNA SOLA VEZ" if args.una_vez else "de lunes a viernes"
+    print(f"Programando el flujo a las {args.hora}, {cuando}")
     print("=" * 72)
 
     if not RX_HORA.match(args.hora):
@@ -264,7 +298,12 @@ def main(argv: list[str] | None = None) -> int:
         "Flujo diario Moodle-SINU. Comprueba que el tablero de Power BI se "
         "actualizo hoy; si no, avisa y no exporta. Ver el README del proyecto."
     )
-    xml = construir_xml(args.hora, simulacion=args.simulacion, descripcion=descripcion)
+    xml = construir_xml(
+        args.hora,
+        simulacion=args.simulacion,
+        descripcion=descripcion,
+        una_vez=args.una_vez,
+    )
 
     print()
     print("La tarea ejecutara:")
@@ -314,7 +353,10 @@ def main(argv: list[str] | None = None) -> int:
             ruta_xml.unlink(missing_ok=True)
 
     print()
-    print(f"Tarea '{args.nombre}' registrada: {args.hora}, de lunes a viernes.")
+    if args.una_vez:
+        print(f"Tarea '{args.nombre}' registrada: {args.hora}, UNA SOLA VEZ.")
+    else:
+        print(f"Tarea '{args.nombre}' registrada: {args.hora}, de lunes a viernes.")
     print(f"Primer disparo: {primer_disparo(args.hora):%A %d/%m/%Y %H:%M}")
     print()
     print("Comprobarla:")

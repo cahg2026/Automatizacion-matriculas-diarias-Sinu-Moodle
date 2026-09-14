@@ -394,6 +394,64 @@ no ha pasado, y si no el siguiente día laborable. La primera versión ponía
 siempre «mañana», y registrada un miércoles a las 08:12 para las 09:00 dejaba
 la tarea para el jueves — se habría esperado a las 9:00 sin que pasara nada.
 
+### El panel: encender y apagar con botones
+
+Doble clic en **`Flujo diario.bat`**, en la raíz del proyecto.
+
+```
+┌──────────────────────────────────────────────┐
+│  ENCENDIDA - L a V                           │
+│  Próxima ejecución: martes 15/09/2026 a las 09:00
+│  Modo REAL: modificará matrículas en SINU.   │
+│  ──────────────────────────────────────────  │
+│  Programación:                               │
+│  [Todos los días (L-V)] [Solo mañana] [Apagar]
+└──────────────────────────────────────────────┘
+```
+
+**La mitad de la ventana es el estado, no los botones**, y es deliberado: el
+modo de fallo peligroso aquí no es que cueste apagarlo, es **creer que está
+apagado cuando está encendido** — o al revés. Un botón que alterna a ciegas no
+lo evita; ver el estado sí.
+
+Por eso el **modo se muestra siempre**, y en ámbar cuando va a escribir. La
+diferencia entre un ensayo y tocar matrículas de verdad no debería depender de
+la memoria de nadie.
+
+| Botón | Qué hace |
+|---|---|
+| **Todos los días (L-V)** | Disparador semanal, lunes a viernes |
+| **Solo mañana** | Disparador de **una sola vez** |
+| **Apagar** | Deshabilita la tarea sin borrarla |
+
+«Solo mañana» **no es la tarea semanal desactivada**: es un disparador de una
+sola ejecución. Así corre ese día y se queda quieta sola, sin que nadie tenga
+que acordarse de apagarla — que es justo el descuido que dejó `MODO_SIMULACION`
+abierto seis días (01–07/09/2026).
+
+Lo mismo desde la consola, si se prefiere:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\programar_9am.py            # L-V
+.\.venv\Scripts\python.exe scripts\programar_9am.py --una-vez  # una sola vez
+.\.venv\Scripts\python.exe scripts\programar_9am.py --quitar
+```
+
+#### El estado se lee del XML, no de la salida traducida
+
+`schtasks /Query /FO LIST /V` saca las etiquetas **traducidas** («Estado»,
+«Próxima ejecución»…), así que analizarlas ata el código al idioma del equipo.
+`tarea_programada.py` lee `schtasks /Query /XML`, cuya estructura es igual en
+cualquier idioma.
+
+Es la misma lección que dio Power BI: los selectores en español funcionaban
+hasta que Chromium headless arrancaba en inglés.
+
+Y la próxima ejecución **se calcula**, no se lee: Windows la expone traducida y
+en formato local, y este proyecto ya tuvo que poner una guarda por una fecha
+día/mes interpretada al revés.
+
+
 **Programador de tareas de Windows, no `schedule`/APScheduler.** Una tarea del
 sistema sobrevive a reinicios, a cierres de sesión y a que se cierre la consola.
 Un bucle de Python vive solo mientras viva su proceso, y basta un reinicio
