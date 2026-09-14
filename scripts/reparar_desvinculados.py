@@ -1,19 +1,30 @@
-"""Vuelve a vincular a los estudiantes que quedaron desvinculados a medias.
+"""Vuelve a vincular las MATERIAS que quedaron desvinculadas a medias.
 
-Cuando un reciclado se corta entre el desvincular y el vincular, el estudiante
-queda peor que al empezar. `logs/ciclos_abiertos.jsonl` los registra; esto los
-arregla.
+Cuando un reciclado se corta entre el desvincular y el vincular, esa materia
+queda peor que al empezar. `logs/ciclos_abiertos.jsonl` la registra con su
+codigo; esto la arregla.
 
-Por que fuerza VINCULAR y no la secuencia normal
-------------------------------------------------
-`decidir_secuencia` mira si ALGUNA materia esta vinculada y, si lo esta, recicla
--- o sea, desvincula otra vez. Para un estudiante a medio arreglar eso vuelve a
-abrir la ventana de riesgo sin necesidad: "Vincular grupos matriculados" actua
-sobre TODAS sus asignaturas del periodo, asi que un solo vincular lo deja
-completo, venga de 0 o de 3 de 6.
+Que se repara, exactamente
+--------------------------
+La materia del apunte y nada mas. Antes del 03/09/2026 este script vinculaba al
+estudiante completo, apoyandose en que "Vincular grupos matriculados" actua
+sobre TODAS sus asignaturas, asi que un solo vincular lo dejaba completo. Esa
+premisa venia de la referencia de negocio y era falsa: la regla del proceso es
+que por la 07 solo se toca el codigo de materia que registre el reporte.
 
-Se verifica leyendo antes y despues, y solo se cierra el apunte del ciclo si de
-verdad quedaron todas vinculadas.
+Los apuntes anteriores a esa fecha no dicen QUE materia quedo a medias. No se
+adivina: se reportan para revisar a mano. Reparar la materia equivocada seria
+tocar una matricula que nadie pidio tocar.
+
+Nunca recicla
+-------------
+Si la materia ya tiene el check, el apunte se cierra y no se toca nada.
+Desvincularla otra vez volveria a abrir la ventana de riesgo sin necesidad, que
+es justo lo que este script existe para cerrar. Y si no lo tiene, la decision de
+`ejecutar_materia` es SOLO_VINCULAR por construccion.
+
+Se verifica leyendo antes y despues -- con sondeo del check, no una sola
+lectura -- y solo se cierra el apunte si esa materia quedo de verdad vinculada.
 
 Uso:
     python scripts/reparar_desvinculados.py --sheet-url URL [--ejecutar-de-verdad]
@@ -31,24 +42,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 from moodle_sinu import registro  # noqa: E402
-from moodle_sinu import selectores_sinu_escritura as sesc  # noqa: E402
 from moodle_sinu.acceso_sinu import ErrorAccesoSinu, abrir_y_acceder  # noqa: E402
 from moodle_sinu.config import Config, asegurar_directorios  # noqa: E402
 from moodle_sinu.constantes_sinu import ACTIVIDAD_VINCULACION  # noqa: E402
 from moodle_sinu.ejecutor_sinu import (  # noqa: E402
     RUTA_CICLOS_ABIERTOS,
+    AccionSeDesbordo,
     ErrorEjecucionSinu,
     _apuntar_ciclo,
     ciclos_abiertos,
-    esperar_proceso_terminado,
-    pulsar_ejecutar,
-    seleccionar_accion,
+    ejecutar_materia,
+    fila_de_materia,
 )
 from moodle_sinu.lector_sinu import (  # noqa: E402
     ErrorLecturaSinu,
     entrar_en_modulo,
     fijar_periodo,
+    filtrar_grupos_por_materia,
     leer_estudiante,
+    limpiar_filtro_de_materia,
 )
 from moodle_sinu.navegador import abrir_contexto  # noqa: E402
 from moodle_sinu.periodo_sheet import (  # noqa: E402
@@ -77,6 +89,12 @@ def _argumentos() -> argparse.Namespace:
     p.add_argument("--visible", action="store_true", help="Navegador con ventana")
     p.add_argument("--verbose", "-v", action="store_true", help="Log en DEBUG")
     return p.parse_args()
+
+
+def _releer_todas(page, cfg, cedula: str):
+    """La grilla Grupos SIN filtro de materia, para la guarda de desborde."""
+    limpiar_filtro_de_materia(page, cfg)
+    return leer_estudiante(page, cfg, cedula).grupos
 
 
 def main() -> int:
@@ -131,56 +149,95 @@ def main() -> int:
             for apunte in pendientes:
                 cedula = apunte.get("identificacion", "")
                 periodo = apunte.get("cod_periodo", "")
+                objetivo = apunte.get("materia", "")
+                etiqueta = f"{cedula} / {objetivo}" if objetivo else cedula
                 print()
                 print("=" * 62)
-                print(f"{cedula} ({periodo}) - anotado como '{apunte.get('estado')}'")
+                print(f"{etiqueta} ({periodo}) - anotado como '{apunte.get('estado')}'")
+
+                if not objetivo:
+                    # Apunte anterior al 03/09/2026: no dice QUE materia quedo a
+                    # medias. No se adivina -- reparar la materia equivocada es
+                    # tocar una matricula que nadie pidio tocar.
+                    print(
+                        "  -> el apunte no dice la materia (formato anterior al "
+                        "03/09/2026). Revisar a mano en ISEF07."
+                    )
+                    fallidos.append((etiqueta, "apunte sin materia: revisar a mano"))
+                    continue
+
+                cod_materia, _, num_grupo = objetivo.partition("/")
+
                 try:
                     fijar_periodo(page, cfg, periodo)
                     antes = leer_estudiante(page, cfg, cedula)
                 except ErrorLecturaSinu as exc:
                     log.error("No se pudo leer a %s: %s", cedula, exc)
-                    fallidos.append((cedula, f"no se pudo leer: {exc}"))
+                    fallidos.append((etiqueta, f"no se pudo leer: {exc}"))
                     continue
 
-                total = len(antes.grupos)
-                vinculadas = sum(1 for g in antes.grupos if g.vinculado)
-                print(f"  antes: {vinculadas} de {total} vinculadas")
+                fila = fila_de_materia(antes.grupos, cod_materia, num_grupo)
+                if fila is None:
+                    print(
+                        f"  -> {objetivo} no aparece entre las "
+                        f"{len(antes.grupos)} asignaturas del estudiante."
+                    )
+                    fallidos.append((etiqueta, "la materia no esta en la grilla"))
+                    continue
 
-                if total and vinculadas == total:
-                    print("  -> ya estaba completo; se cierra el apunte.")
+                print(f"  antes: {objetivo} vinculado={fila.vinculado}")
+
+                if fila.vinculado:
+                    # Nada que reparar. Y NO se recicla: reciclar aqui volveria a
+                    # abrir la ventana de riesgo sin necesidad, que es justo lo
+                    # que este script existe para cerrar.
+                    print("  -> ya estaba vinculada; se cierra el apunte.")
                     if de_verdad:
-                        _apuntar_ciclo(cedula, periodo, "cerrado")
-                    intactos.append(cedula)
+                        _apuntar_ciclo(cedula, periodo, "cerrado", objetivo)
+                    intactos.append(etiqueta)
                     continue
 
                 if not de_verdad:
-                    print("  -> [SIMULACION] se habria ejecutado Vincular.")
+                    print(f"  -> [SIMULACION] se habria vinculado {objetivo}.")
                     continue
 
+                # Acotar la grilla: se repara ESA materia, no el estudiante.
                 try:
-                    seleccionar_accion(page, cfg, sesc.OPCION_VINCULAR)
-                    pulsar_ejecutar(page, cfg)
-                    esperar_proceso_terminado(page, cfg)
-                except ErrorEjecucionSinu as exc:
-                    log.error("Fallo el vincular de %s: %s", cedula, exc)
-                    fallidos.append((cedula, str(exc)[:150]))
-                    continue
-
-                # Se comprueba de verdad, no se da por hecho.
-                try:
-                    despues = leer_estudiante(page, cfg, cedula)
+                    filtrar_grupos_por_materia(page, cfg, cod_materia)
                 except ErrorLecturaSinu as exc:
-                    fallidos.append((cedula, f"vinculado pero no verificable: {exc}"))
+                    fallidos.append((etiqueta, f"no se pudo acotar: {exc}"))
                     continue
-                ahora = sum(1 for g in despues.grupos if g.vinculado)
-                print(f"  despues: {ahora} de {len(despues.grupos)} vinculadas")
-                if len(despues.grupos) and ahora == len(despues.grupos):
-                    _apuntar_ciclo(cedula, periodo, "cerrado")
-                    arreglados.append(cedula)
-                    print("  -> ARREGLADO y apunte cerrado.")
-                else:
-                    fallidos.append((cedula, f"quedo en {ahora}/{len(despues.grupos)}"))
-                    print("  -> SIGUE INCOMPLETO. El apunte queda abierto.")
+
+                # `ejecutar_materia` trae las guardas buenas: sondeo del check,
+                # comprobacion de desborde y cierre del apunte. Y como la materia
+                # NO tiene check, su decision es SOLO_VINCULAR -- nunca recicla.
+                try:
+                    r = ejecutar_materia(
+                        page,
+                        cfg,
+                        identificacion=cedula,
+                        cod_periodo=periodo,
+                        cod_materia=cod_materia,
+                        num_grupo=num_grupo,
+                        grupos=antes.grupos,
+                        releer_materia=lambda m=cod_materia: filtrar_grupos_por_materia(
+                            page, cfg, m
+                        ),
+                        releer_todas=lambda ced=cedula: _releer_todas(page, cfg, ced),
+                    )
+                except AccionSeDesbordo as exc:
+                    log.error("%s", exc)
+                    print(f"  !! {exc}")
+                    print("  Se detiene la reparacion.")
+                    return 2
+                except ErrorEjecucionSinu as exc:
+                    log.error("Fallo el vincular de %s: %s", etiqueta, exc)
+                    fallidos.append((etiqueta, str(exc)[:150]))
+                    continue
+
+                _apuntar_ciclo(cedula, periodo, "cerrado", objetivo)
+                arreglados.append(etiqueta)
+                print(f"  -> ARREGLADO ({r.segundos}s) y apunte cerrado.")
         finally:
             cerrar()
 

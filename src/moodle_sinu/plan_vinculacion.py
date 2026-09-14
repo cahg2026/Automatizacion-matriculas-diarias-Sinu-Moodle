@@ -4,11 +4,22 @@ Traduce el resultado de la Fase 1 en la lista de cosas que hay que hacer en el
 sistema academico, siguiendo dos reglas que vienen de la skill de negocio
 `cun-sigwt-matricula` y que NO son evidentes desde el reporte:
 
-1. **La unidad de trabajo es el estudiante, no la fila.** El reporte trae una
-   fila por asignatura matriculada, pero "Vincular grupos matriculados" de
-   ISEF07 actua sobre el estudiante completo: vincula de golpe todas sus
-   asignaturas del periodo activo. Procesar por fila repetiria el mismo
-   estudiante una vez por materia, y cada repeticion cuesta 15-40 s.
+1. **La unidad de trabajo es (cedula, materia): una operacion por FILA del
+   reporte.** CORREGIDO el 03/09/2026.
+
+   Este modulo decia lo contrario -- que la unidad era el estudiante, porque
+   "Vincular grupos matriculados" vinculaba de golpe todas sus asignaturas --
+   y agrupaba las filas por cedula para no repetir al mismo estudiante. La
+   premisa venia de `references/vinculacion-moodle.md` y era falsa. La regla
+   real, del dueno del proceso:
+
+       Por la 07 unicamente se debe procesar, por estudiante, el codigo de la
+       materia que registre en el reporte. No otro, no todos, no algunos.
+
+   Agrupar por cedula era precisamente lo que hacia perder de vista la materia,
+   y el 03/09/2026 llevo a reciclar 34 asignaturas cuando correspondian 5. Si
+   un estudiante tiene dos filas en el reporte, son dos operaciones: cuestan el
+   doble y tocan solo lo que el reporte pide.
 
 2. **El filtro de Periodo se fija una sola vez por sesion.** Por eso el trabajo
    se agrupa por `COD_PERIODO`: cada lote es una sesion de ISEF07 con su periodo
@@ -33,22 +44,40 @@ from .modelos import FilaReporte, ResultadoValidacion
 
 @dataclass(frozen=True)
 class OperacionSinu:
-    """Un estudiante a procesar dentro de un periodo: una pasada por ISEF07."""
+    """UNA materia de un estudiante: una pasada por ISEF07.
+
+    Es una fila del reporte, no un estudiante. Ver la regla 1 del modulo.
+    """
 
     identificacion: str
     nombre: str
     cod_periodo: str
 
-    filas: tuple[int, ...] = ()
-    """Filas del reporte que cubre esta operacion (1-based, como en el .xlsx)."""
+    cod_materia: str = ""
+    num_grupo: str = ""
+    """La materia sobre la que se actua. Lo unico que se toca en ISEF07."""
 
-    materias: tuple[str, ...] = ()
-    """COD_MATERIA de esas filas. Informativo: ISEF07 vincula todas las
-    asignaturas del periodo, no una a una."""
+    fila: int = 0
+    """Fila del reporte de la que sale (1-based, como en el .xlsx)."""
+
+    @property
+    def objetivo(self) -> str:
+        """COD_MATERIA/NUM_GRUPO, como se nombra en los registros y avisos."""
+        return f"{self.cod_materia}/{self.num_grupo}" if self.num_grupo else self.cod_materia
+
+    @property
+    def filas(self) -> tuple[int, ...]:
+        """Compatibilidad: antes una operacion cubria varias filas."""
+        return (self.fila,) if self.fila else ()
+
+    @property
+    def materias(self) -> tuple[str, ...]:
+        """Compatibilidad: antes una operacion cubria varias materias."""
+        return (self.cod_materia,) if self.cod_materia else ()
 
     @property
     def n_materias(self) -> int:
-        return len(self.materias)
+        return 1 if self.cod_materia else 0
 
 
 @dataclass
@@ -132,42 +161,31 @@ def construir_plan(resultado: ResultadoValidacion) -> PlanVinculacion:
     Solo entran las filas procesables: las que la Fase 1 omitio (campo
     obligatorio vacio, duplicado con datos distintos) no van a SINU.
     """
-    # (periodo, cedula) -> operacion en construccion. Un dict normal conserva el
-    # orden de insercion, que es justo el orden de aparicion que hay que mantener.
-    acumulado: dict[tuple[str, str], dict] = {}
+    lotes: dict[str, LotePeriodo] = {}
+    sin_periodo: list[OperacionSinu] = []
 
+    # Una operacion por fila procesable, en el orden en que aparecen. NO se
+    # agrupa por cedula: agrupar era lo que hacia perder la materia de vista.
     for fila in resultado.procesables:
         cedula = fila.identificacion
         if not cedula:
             # No deberia pasar: IDENTIFICACION es obligatorio y la Fase 1 ya
             # omitio las filas sin el. Se ignora en vez de romper el plan.
             continue
-        clave = (fila.cod_periodo, cedula)
-        entrada = acumulado.setdefault(
-            clave,
-            {"nombre": fila.nombre, "filas": [], "materias": []},
-        )
-        entrada["filas"].append(fila.fila)
-        if fila.cod_materia:
-            entrada["materias"].append(fila.cod_materia)
-
-    lotes: dict[str, LotePeriodo] = {}
-    sin_periodo: list[OperacionSinu] = []
-
-    for (periodo, cedula), datos in acumulado.items():
         operacion = OperacionSinu(
             identificacion=cedula,
-            nombre=datos["nombre"],
-            cod_periodo=periodo,
-            filas=tuple(datos["filas"]),
-            materias=tuple(datos["materias"]),
+            nombre=fila.nombre,
+            cod_periodo=fila.cod_periodo,
+            cod_materia=fila.cod_materia or "",
+            num_grupo=getattr(fila, "num_grupo", "") or "",
+            fila=fila.fila,
         )
-        if not periodo:
+        if not fila.cod_periodo:
             sin_periodo.append(operacion)
             continue
-        lotes.setdefault(periodo, LotePeriodo(cod_periodo=periodo)).operaciones.append(
-            operacion
-        )
+        lotes.setdefault(
+            fila.cod_periodo, LotePeriodo(cod_periodo=fila.cod_periodo)
+        ).operaciones.append(operacion)
 
     # Los lotes se ordenan por COD_PERIODO de la A a la Z (decision del dueno
     # del proceso, 24/08/2026). Es el mismo orden que queda en el Google Sheet
@@ -234,17 +252,22 @@ def formatear_plan(plan: PlanVinculacion) -> str:
         )
 
     multiples = [
-        op for lote in plan.lotes for op in lote.operaciones if op.n_materias > 1
+        op for lote in plan.lotes for op in lote.operaciones
     ]
-    if multiples:
+    repetidos: dict[tuple[str, str], int] = {}
+    for op in multiples:
+        clave = (op.cod_periodo, op.identificacion)
+        repetidos[clave] = repetidos.get(clave, 0) + 1
+    con_varias = {k: v for k, v in repetidos.items() if v > 1}
+    if con_varias:
         lineas.append("")
         lineas.append(
-            f"{len(multiples)} estudiantes traen mas de una asignatura "
-            f"(maximo {max(o.n_materias for o in multiples)})."
+            f"{len(con_varias)} estudiantes traen mas de una asignatura en el "
+            f"reporte (maximo {max(con_varias.values())})."
         )
         lineas.append(
-            "ISEF07 las vincula todas de una vez, asi que son UNA operacion, "
-            "no una por materia."
+            "Cada una es una operacion APARTE: en ISEF07 se acota la grilla a "
+            "esa materia y se actua solo sobre ella."
         )
 
     if plan.sin_periodo:

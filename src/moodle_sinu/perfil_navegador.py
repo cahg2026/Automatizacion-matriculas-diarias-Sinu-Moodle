@@ -184,3 +184,95 @@ def exigir_disponible(perfil: PerfilResuelto) -> None:
         "automatizacion afecta al navegador de diario del usuario.",
         carpeta,
     )
+
+
+# ---------------------------------------------------------------------------
+# La sesion de Google: viva o no, medido de verdad
+# ---------------------------------------------------------------------------
+
+#: Servicio contra el que se prueba. Drive es el que el flujo necesita de
+#: verdad (la subida del Sheet), asi que es el que hay que comprobar.
+URL_PRUEBA_SESION = "https://drive.google.com/drive/my-drive"
+
+#: Estados en los que Google pide identificarse. Se distinguen porque el
+#: remedio de cada uno es distinto, y confundirlos manda a depurar donde no
+#: esta el problema.
+SENALES_SESION = {
+    "accountchooser": (
+        "Google pide ELEGIR CUENTA. La sesion existe pero hay varias cuentas. "
+        "Fijar el indice con /u/0/ no lo salta (comprobado el 01/09/2026)."
+    ),
+    "confirmidentifier": (
+        "Google pide REVERIFICAR la identidad ('Demuestra que eres tu'). Es el "
+        "segundo factor, y solo lo puede resolver una persona. Fue lo que "
+        "tumbo la corrida del 08/09/2026 en el paso 3."
+    ),
+    "signin": "Google pide INICIAR SESION: el perfil no tiene sesion valida.",
+    "servicelogin": "Google pide INICIAR SESION: el perfil no tiene sesion valida.",
+}
+
+
+@dataclass(frozen=True)
+class SesionGoogle:
+    """Si la sesion de Google sirve, medido navegando de verdad."""
+
+    viva: bool
+    detalle: str = ""
+    url_final: str = ""
+
+    def __str__(self) -> str:  # pragma: no cover - conveniencia
+        return ("sesion de Google VIVA" if self.viva else f"sesion CAIDA: {self.detalle}")
+
+
+def pide_iniciar_sesion(url: str) -> str | None:
+    """Si `url` es una pantalla de identificacion, el motivo. None si no.
+
+    Funcion pura para poder probarla: la decision de "hay sesion o no" se toma
+    aqui, y navegar es solo como se consigue la URL.
+    """
+    bajo = (url or "").lower()
+    if "accounts.google.com" not in bajo:
+        return None
+    for senal, motivo in SENALES_SESION.items():
+        if senal in bajo:
+            return motivo
+    return "Google redirigio a accounts.google.com (pantalla de identificacion)."
+
+
+def comprobar_sesion_google(context, cfg: Config, url: str | None = None) -> SesionGoogle:
+    """Comprueba la sesion NAVEGANDO, no mirando cookies.
+
+    Existe porque contar cookies engana, y el 08/09/2026 costo una corrida: el
+    perfil tenia 88 cookies y "todas las de sesion de Google presentes",
+    mientras Google habia invalidado la sesion del lado del SERVIDOR. El paso 0
+    dio el visto bueno, se exporto Power BI, y el fallo salio en el paso 3, ya
+    con el cerrojo de escritura abierto.
+
+    La presencia de una cookie dice que el navegador la guarda. No dice que el
+    servidor la siga aceptando. Lo unico que lo dice es pedirle una pagina.
+    """
+    destino = url or URL_PRUEBA_SESION
+    plazo = max(getattr(cfg, "timeout_operacion_seg", 30), 30) * 1000
+    page = context.new_page()
+    try:
+        page.goto(destino, timeout=plazo, wait_until="domcontentloaded")
+        page.wait_for_timeout(3000)
+        motivo = pide_iniciar_sesion(page.url)
+        if motivo:
+            log.error("Sesion de Google CAIDA: %s", motivo)
+            return SesionGoogle(viva=False, detalle=motivo, url_final=page.url)
+        log.info("Sesion de Google viva (%s respondio sin pedir login).", destino)
+        return SesionGoogle(viva=True, url_final=page.url)
+    except Exception as exc:  # noqa: BLE001
+        # No saber NO es lo mismo que estar caida: se dice asi.
+        log.warning("No se pudo comprobar la sesion de Google: %s", exc)
+        return SesionGoogle(
+            viva=False,
+            detalle=f"no se pudo comprobar ({exc}); no es lo mismo que estar caida",
+            url_final=destino,
+        )
+    finally:
+        try:
+            page.close()
+        except Exception:  # noqa: BLE001
+            pass
