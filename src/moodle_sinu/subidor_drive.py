@@ -141,7 +141,26 @@ def _exigir(locator: Locator, timeout_seg: float, descripcion: str) -> Locator:
 
 
 def _abrir_carpeta(page: Page, id_carpeta: str, cfg: Config, descripcion: str) -> None:
-    """Navega a una carpeta de Drive y espera a que la rejilla exista."""
+    """Navega a una carpeta de Drive y espera a que su contenido se pinte.
+
+    Las tres esperas son distintas y hacen falta las tres:
+
+      - `goto` con `domcontentloaded` vuelve en cuanto el navegador parsea el
+        HTML. En una aplicacion de pagina unica como Drive eso NO significa que
+        se haya cambiado de carpeta;
+      - `_esperar_lista` confirma que existe la rejilla. Pero una rejilla
+        visible puede estar VACIA mientras Drive sigue cargando;
+      - `_esperar_filas` es la unica senal positiva de que el contenido de esta
+        carpeta ya esta en pantalla.
+
+    Sin la tercera, el 14/09/2026 el flujo leyo la raiz vacia, dedujo que no
+    existia 'SEPTIEMBRE' y la creo en 'Mi unidad' -- porque Drive crea la
+    carpeta donde la aplicacion cree estar, no donde diga la URL.
+
+    Aqui no se falla si el listado queda vacio: una carpeta del mes recien
+    creada SI puede estarlo. Quien tome una decision peligrosa a partir del
+    listado es quien debe exigir que no este vacio.
+    """
     url = sel.URL_CARPETA.format(id=id_carpeta)
     log.info("Abriendo %s (%s)", descripcion, url)
     try:
@@ -152,6 +171,8 @@ def _abrir_carpeta(page: Page, id_carpeta: str, cfg: Config, descripcion: str) -
     _verificar_sesion(page, id_carpeta)
 
     _esperar_lista(page, cfg, descripcion)
+    filas = _esperar_filas(page, descripcion)
+    log.debug("%s: %d fila(s) visibles tras cargar.", descripcion, len(filas))
 
 
 def es_pagina_de_error(titulo: str) -> bool:
@@ -377,6 +398,43 @@ def _obtener_filas(page: Page) -> list[tuple[str, Locator]]:
             resultado.append((etiqueta.strip(), fila))
     return resultado
 
+#: Cuanto se espera a que el listado se PINTE, no solo a que exista la rejilla.
+#:
+#: Drive es una aplicacion de pagina unica: `page.goto` con
+#: `wait_until="domcontentloaded"` vuelve en milisegundos, y la rejilla se ve
+#: enseguida -- pero VACIA, con la vista todavia sin cambiar de carpeta.
+#:
+#: Eso costo dos incidentes en el Drive del usuario (01/09 y 14/09/2026). El
+#: del 14/09 se ve entero en el log: no encontro 'SEPTIEMBRE' en la raiz, la
+#: creo en 'Mi unidad', y al volver a buscarla TAMPOCO la encontro. Acababa de
+#: crearla, asi que existia con certeza: lo que fallaba era la lectura.
+SEG_ESPERA_FILAS = 25.0
+SEG_SONDEO_FILAS = 1.0
+
+
+def _esperar_filas(page: Page, descripcion: str) -> list[tuple[str, Locator]]:
+    """Espera a que el listado tenga filas y las devuelve.
+
+    Devuelve lista vacia si se agota el plazo. Ojo: vacio NO significa "la
+    carpeta esta vacia" -- significa "no se vio ni una fila", que tambien es lo
+    que se ve cuando Drive no ha terminado de cargar. Quien decida algo
+    peligroso a partir de aqui tiene que tratar el vacio como "no lo se".
+    """
+    limite = time.monotonic() + SEG_ESPERA_FILAS
+    while True:
+        filas = _obtener_filas(page)
+        if filas:
+            return filas
+        if time.monotonic() >= limite:
+            log.warning(
+                "El listado de %s sigue sin filas tras %.0fs.",
+                descripcion,
+                SEG_ESPERA_FILAS,
+            )
+            return []
+        page.wait_for_timeout(_ms(SEG_SONDEO_FILAS))
+
+
 def _nombres_de_archivos(page: Page) -> list[str]:
     return [nombre for nombre, _ in _obtener_filas(page)]
 
@@ -403,10 +461,35 @@ def _entrar_en_carpeta_mes(
     """
     objetivo = nombre_mes(fecha)
     id_padre = id_de_url(page.url)
-    fila = _buscar_fila(page, objetivo)
+
+    # Se espera a que el listado se pinte ANTES de decidir nada. Leerlo de una
+    # sola pasada daba vacio mientras Drive seguia cargando, y de ahi salia la
+    # conclusion "la carpeta no existe".
+    filas = _esperar_filas(page, f"la carpeta raiz (para buscar '{objetivo}')")
+
+    if not filas:
+        # Esta es la guarda que faltaba el 14/09/2026. La carpeta raiz NUNCA
+        # esta vacia de verdad: tiene una subcarpeta por mes. Asi que "cero
+        # filas" no puede significar "esta vacia", solo puede significar "no
+        # cargo". Y con esa duda no se crea nada: crear es la accion que
+        # ensucia el Drive, y equivocarse creando cuesta limpiar a mano.
+        raise ErrorSubidaDrive(
+            f"El listado de la carpeta raiz se quedo sin una sola fila tras "
+            f"{SEG_ESPERA_FILAS:.0f}s. No se crea '{objetivo}': una raiz sin "
+            f"filas significa que Drive no termino de cargar, no que este "
+            f"vacia -- tiene una carpeta por mes. Crear a ciegas fue lo que "
+            f"dejo una 'SEPTIEMBRE' suelta en 'Mi unidad' el 14/09/2026."
+        )
+
+    buscado = objetivo.strip().casefold()
+    fila = next((f for etiqueta, f in filas if buscado in etiqueta.casefold()), None)
 
     if fila is None:
-        log.info("La carpeta '%s' no existe; se crea.", objetivo)
+        log.info(
+            "La carpeta '%s' no esta entre las %d del listado; se crea.",
+            objetivo,
+            len(filas),
+        )
         # Drive crea la carpeta donde la UI este mirando. Sin esta guarda, un
         # fallo de lectura de la lista hacia que 'SEPTIEMBRE' naciera en 'Mi
         # unidad' en vez de dentro de 'REPORTES 2026' (01/09/2026).
