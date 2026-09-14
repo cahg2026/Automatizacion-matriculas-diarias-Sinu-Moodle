@@ -269,3 +269,94 @@ class TestGuardaDeCarpetaDestino:
             _exigir_dentro_de(pagina, ID, "crear la carpeta 'SEPTIEMBRE'")
         assert ID in str(exc.value)
         assert otra in str(exc.value)
+
+
+class PaginaQueTardaEnPintar:
+    """Doble de Page cuyo listado aparece tras N lecturas.
+
+    Reproduce lo que hace Drive de verdad: la rejilla existe y esta visible
+    desde el primer instante, pero vacia, porque la aplicacion todavia no ha
+    cambiado de carpeta.
+    """
+
+    def __init__(self, filas_finales: list[str], lecturas_en_blanco: int):
+        self.filas_finales = filas_finales
+        self.restantes = lecturas_en_blanco
+        self.lecturas = 0
+        self.esperas_ms = 0
+
+    def wait_for_timeout(self, ms: float) -> None:
+        self.esperas_ms += ms
+
+    def leer(self) -> list[tuple[str, str]]:
+        self.lecturas += 1
+        if self.restantes > 0:
+            self.restantes -= 1
+            return []
+        return [(n, f"<fila {n}>") for n in self.filas_finales]
+
+
+class TestEsperarFilas:
+    """El listado se lee cuando TIENE filas, no cuando existe la rejilla.
+
+    El 14/09/2026 una sola lectura instantanea devolvio vacio, el flujo dedujo
+    que 'SEPTIEMBRE' no existia y la creo en 'Mi unidad'. Y al volver a
+    buscarla tampoco la encontro: acababa de crearla, asi que existia con
+    certeza. Lo que fallaba era la lectura, no el Drive.
+    """
+
+    def test_reintenta_hasta_que_aparecen(self, monkeypatch):
+        from moodle_sinu import subidor_drive as sd
+
+        pagina = PaginaQueTardaEnPintar(["ABRIL", "SEPTIEMBRE"], lecturas_en_blanco=3)
+        monkeypatch.setattr(sd, "_obtener_filas", lambda p: p.leer())
+        filas = sd._esperar_filas(pagina, "la raiz")
+        assert [n for n, _ in filas] == ["ABRIL", "SEPTIEMBRE"]
+        assert pagina.lecturas == 4  # 3 en blanco y la buena
+
+    def test_si_estan_a_la_primera_no_espera(self, monkeypatch):
+        from moodle_sinu import subidor_drive as sd
+
+        pagina = PaginaQueTardaEnPintar(["AGOSTO"], lecturas_en_blanco=0)
+        monkeypatch.setattr(sd, "_obtener_filas", lambda p: p.leer())
+        sd._esperar_filas(pagina, "la raiz")
+        assert pagina.esperas_ms == 0
+
+    def test_se_rinde_y_devuelve_vacio(self, monkeypatch):
+        """Vacio significa "no vi ni una fila", no "la carpeta esta vacia".
+        Quien decida algo peligroso con eso debe tratarlo como "no lo se"."""
+        from moodle_sinu import subidor_drive as sd
+
+        monkeypatch.setattr(sd, "SEG_ESPERA_FILAS", 0.05)
+        monkeypatch.setattr(sd, "SEG_SONDEO_FILAS", 0.01)
+        pagina = PaginaQueTardaEnPintar([], lecturas_en_blanco=10_000)
+        monkeypatch.setattr(sd, "_obtener_filas", lambda p: p.leer())
+        assert sd._esperar_filas(pagina, "la raiz") == []
+
+
+class TestNoSeCreaACiegas:
+    """La raiz NUNCA esta vacia: tiene una carpeta por mes.
+
+    Asi que "cero filas en la raiz" no puede significar "esta vacia", solo
+    puede significar "no cargo". Y con esa duda no se crea nada: crear es la
+    accion que ensucia el Drive y que hay que limpiar a mano.
+    """
+
+    def test_el_mensaje_explica_por_que_no_se_crea(self):
+        from moodle_sinu import subidor_drive as sd
+        import inspect
+
+        fuente = inspect.getsource(sd._entrar_en_carpeta_mes)
+        assert "_esperar_filas" in fuente
+        assert "if not filas:" in fuente
+        # y que aborta en vez de crear
+        i_guarda = fuente.index("if not filas:")
+        i_crear = fuente.index("_crear_carpeta")
+        assert i_guarda < i_crear, "la guarda debe ir ANTES de crear"
+
+    def test_abrir_carpeta_espera_las_filas(self):
+        from moodle_sinu import subidor_drive as sd
+        import inspect
+
+        fuente = inspect.getsource(sd._abrir_carpeta)
+        assert "_esperar_filas" in fuente
