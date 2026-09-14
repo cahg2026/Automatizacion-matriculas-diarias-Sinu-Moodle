@@ -79,6 +79,33 @@ Su cuenta de Google necesita además **permiso de escritura en la carpeta de
 Drive** `REPORTES 2026`. Es un permiso que alguien tiene que conceder antes; el
 código no puede resolverlo y la etapa 3 fallaría al subir el Sheet.
 
+### La decisión sobre las credenciales expuestas
+
+El 02/09/2026 un `config/.env.respaldo_20260901` llegó a GitHub con cuatro
+valores en claro. El archivo se purgó del historial el 14/09, pero eso no
+deshace que estuvieran publicados 12 días en un servicio de terceros.
+
+Lo que se decidió, y por qué:
+
+| Credencial | Qué permite | Decisión |
+|---|---|---|
+| `SINU_PASSWORD` | **escribir matrículas** | **rotar** |
+| `POWERBI_PASSWORD` | leer un informe | no rotar por ahora |
+
+**Power BI no se rota** porque es una cuenta de servicio que el área ya
+comparte: quien va a recibir el proyecto **ya tenía esa contraseña** en su
+sesión de Chrome. Compartir el repositorio no amplía quién la conoce, así que
+el argumento de «rotar antes de repartirla» no aplica, y el coste de coordinar
+el cambio entre varias personas no lo compensa.
+
+**SINU sí se rota**, y es la prioridad aunque no sea la que tuvo doble
+exposición: es la única con capacidad de **modificar matrículas de
+estudiantes**, es personal de una sola persona, y rotarla no exige coordinar
+con nadie — se cambia y se actualiza una línea del `.env`.
+
+Rotar no rompe nada: basta con escribir el valor nuevo en `config/.env` antes
+de las 09:00 del siguiente día laborable.
+
 ### Por qué se verifica navegando y no por cookies
 
 El 08/09/2026 el perfil tenía 88 cookies y «todas las de sesión de Google

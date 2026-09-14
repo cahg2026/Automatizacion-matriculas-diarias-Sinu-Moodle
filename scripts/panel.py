@@ -165,6 +165,16 @@ class Panel:
 
 
 def main() -> int:
+    # `--help` se atiende ANTES de abrir nada. Sin esto, preguntarle por la
+    # ayuda abria la ventana y dejaba el proceso colgado en el bucle de
+    # eventos: molesto a mano, y bloqueante en cualquier comprobacion
+    # automatica que recorra los scripts preguntandoles `--help`.
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__)
+        print("Estado actual:")
+        print(f"  {leer_estado().resumen()}")
+        return 0
+
     if not PY.is_file():
         print(f"No existe {PY}. Rehacer el entorno (ver README).")
         return 1
