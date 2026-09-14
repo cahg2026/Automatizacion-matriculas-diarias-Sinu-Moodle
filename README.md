@@ -134,17 +134,35 @@ plantilla (`MODO_SIMULACION=true`), así que un clon nuevo arranca seguro.
 
 ### Antes de que más de una persona procese de verdad
 
-Separar cuentas resuelve el choque de sesiones en SINU, pero **no** evita que
-dos personas procesen las mismas matrículas el mismo día: el diario
-`logs/resultados_etapa4.jsonl` es **local a cada equipo**, así que
+Separar cuentas resuelve el choque de sesiones en SINU, pero no basta: el
+diario `logs/resultados_etapa4.jsonl` es **local a cada equipo**, así que
 `--saltar-hechas` no sabe lo que hizo el otro.
 
 El caso malo no es el trabajo duplicado. Es que uno recicle —desvincular y
 volver a vincular— una matrícula que el otro acaba de dejar bien, y que un
 fallo en esa ventana deje al estudiante desvinculado.
 
-Mientras eso no tenga una guarda en el código, **acuérdenlo por fuera**: una
-sola persona con `--ejecutar-de-verdad` al día. Para validar, simulación.
+**El código sí lo guarda.** Lo único compartido entre equipos es Drive, y de
+ahí sale la señal: si al subir el Sheet ya existe un reporte de hoy, es que el
+flujo ya se ejecutó —aquí o en otro equipo— y la etapa 3 aborta:
+
+```
+Ya hay un reporte de 14/09/2026 en Drive: 'REPORTE 14/09/2026 #82'.
+Eso significa que el flujo de hoy YA SE EJECUTO, en este equipo o
+en el de otra persona.
+
+Se aborta aqui, ANTES de tocar ninguna matricula en SINU.
+```
+
+Que salte ahí es lo que importa: **la etapa 3 va antes de la 4**, así que se
+aborta sin haber tocado una sola matrícula.
+
+Queda una ventana estrecha: si dos equipos llegan a la subida en el mismo
+segundo, ninguno ve el reporte del otro. Con la tarea a las 9:00 en ambos, la
+subida cae hacia las 9:05 y la coincidencia exacta es improbable, pero no
+imposible. Para eliminarla haría falta un cerrojo de verdad; mientras tanto, lo
+sensato sigue siendo **una sola persona con `--ejecutar-de-verdad` al día**, y
+el resto en simulación.
 
 ## El día completo en un comando
 

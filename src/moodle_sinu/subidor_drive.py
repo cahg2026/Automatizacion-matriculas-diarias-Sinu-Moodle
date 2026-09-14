@@ -1130,11 +1130,34 @@ def subir_reporte(
             reportes = _leer_consecutivo(page, cfg, fecha, id_raiz, advertencias)
             del_dia = [r for r in reportes if r.fecha == fecha]
             if del_dia and not reemplazar:
+                # Esto es, ademas de una guarda contra duplicados, la guarda de
+                # COORDINACION entre equipos. El diario que lleva la cuenta de
+                # lo hecho es local a cada maquina, asi que `--saltar-hechas` no
+                # sabe lo que hizo otra persona. Lo unico compartido es Drive: si
+                # ya hay un reporte de hoy, alguien ya corrio el flujo.
+                #
+                # Que salte AQUI importa: la etapa 3 va antes de la 4, asi que se
+                # aborta sin haber tocado ni una matricula. El riesgo que evita no
+                # es el trabajo duplicado, es que uno recicle -- desvincular y
+                # volver a vincular -- una matricula que el otro acaba de dejar
+                # bien, y que un fallo en esa ventana deje al estudiante
+                # desvinculado.
                 raise ErrorSubidaDrive(
-                    f"Ya hay un reporte de {fecha:%d/%m/%Y}: "
+                    f"Ya hay un reporte de {fecha:%d/%m/%Y} en Drive: "
                     + ", ".join(f"'{r.nombre}'" for r in del_dia)
-                    + ". Se aborta para no duplicar. Con reemplazar=True se aparta "
-                    "el anterior y el nombre pasa al nuevo."
+                    + ".\n"
+                    "Eso significa que el flujo de hoy YA SE EJECUTO, en este "
+                    "equipo o en el de otra persona.\n"
+                    "\n"
+                    "Se aborta aqui, ANTES de tocar ninguna matricula en SINU: "
+                    "dos equipos procesando el mismo dia pueden desvincular lo "
+                    "que el otro acaba de vincular.\n"
+                    "\n"
+                    "  - Si otra persona ya proceso hoy: no hay nada que hacer.\n"
+                    "  - Si hay que reprocesar a proposito: relanzar la subida "
+                    "con --reemplazar, que aparta el anterior sin borrarlo.\n"
+                    "  - Para probar sin escribir: ejecutar dia_completo.py SIN "
+                    "--ejecutar-de-verdad."
                 )
             if del_dia and reemplazar:
                 # "Reemplazar" se hace APARTANDO, no borrando. Drive no expone un
