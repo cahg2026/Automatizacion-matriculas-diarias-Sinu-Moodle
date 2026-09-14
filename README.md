@@ -31,10 +31,17 @@ $PY = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
 
 & $PY -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m playwright install chromium
-
-Copy-Item config\.env.example config\.env   # y rellenar
 ```
+
+**No hace falta `playwright install chromium`** con la configuración por
+defecto: `NAVEGADOR_CANAL=chrome` usa el Chrome que ya está instalado en el
+equipo. Solo es necesario si se cambia a `NAVEGADOR_CANAL=chromium`.
+
+Comprobado sobre un clon recién hecho: sin ningún navegador de Playwright
+descargado, las 532 pruebas pasan y el asistente da el entorno por bueno.
+
+Y en vez de copiar el `.env` a mano, conviene usar el asistente: lo crea, dice
+qué claves faltan y verifica las sesiones. Ver la sección siguiente.
 
 ## Puesta en marcha en un equipo nuevo
 
