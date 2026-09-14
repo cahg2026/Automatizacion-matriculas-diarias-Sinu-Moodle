@@ -36,6 +36,116 @@ $PY = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
 Copy-Item config\.env.example config\.env   # y rellenar
 ```
 
+## Puesta en marcha en un equipo nuevo
+
+```powershell
+git clone https://github.com/cahg2026/Automatizacion-matriculas-diarias-Sinu-Moodle.git
+cd Automatizacion-matriculas-diarias-Sinu-Moodle
+
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+.\.venv\Scripts\python.exe scripts\primera_vez.py
+```
+
+`scripts/primera_vez.py` es el asistente: recorre **todo lo que no viaja en el
+repositorio** —que es, a propósito, todo lo sensible— y lo verifica sobre el
+terreno en vez de darlo por supuesto.
+
+| Paso | Qué comprueba |
+|---|---|
+| 0 | Python 3.11, el venv, Playwright, Chrome |
+| 1 | Crea `config/.env` desde la plantilla y dice qué claves faltan |
+| 2 | El perfil de Chrome dedicado |
+| 3 | Si el antivirus intercepta el HTTPS, y cómo exportar su CA |
+| 4 | Abre Power BI, SINU, Drive y Calendar para entrar con **sus** credenciales |
+| 5 | Comprueba cada sesión **navegando**, no contando cookies |
+
+`--revisar` solo diagnostica, sin crear nada ni abrir el navegador.
+
+### Las cuentas: cuáles son suyas y cuál se comparte
+
+| | |
+|---|---|
+| **SINU** | **suya.** Necesita permiso sobre ISEF07 |
+| **Google** | **suya.** Decide a qué Drive y a qué Calendar se escribe |
+| **Power BI** | compartida del área |
+
+La de SINU es personal por una razón que conviene entender: **cada vinculación
+queda registrada a nombre de quien la hace.** Usar la cuenta de otra persona
+atribuiría a esa persona modificaciones de matrícula que no hizo.
+
+Su cuenta de Google necesita además **permiso de escritura en la carpeta de
+Drive** `REPORTES 2026`. Es un permiso que alguien tiene que conceder antes; el
+código no puede resolverlo y la etapa 3 fallaría al subir el Sheet.
+
+### Por qué se verifica navegando y no por cookies
+
+El 08/09/2026 el perfil tenía 88 cookies y «todas las de sesión de Google
+presentes» — mientras Google había invalidado la sesión del lado del servidor.
+El paso 0 dio el visto bueno, se exportó Power BI, se abrió el cerrojo de
+escritura, y el fallo salió en el paso 3.
+
+**Una cookie presente dice que el navegador la guarda, no que el servidor la
+acepte.** Lo único que lo dice es pedirle una página y mirar si redirige al
+login. Eso es lo que hace el paso 5, y lo que hace `probar_perfil.py`.
+
+### Si el antivirus intercepta el HTTPS
+
+Con Kaspersky —y con cualquier antivirus que analice tráfico cifrado— pasa
+esto: reemite los certificados con su propia CA y la deja en el almacén de
+Windows. Chrome y Python la aceptan porque leen ese almacén; **Playwright no**,
+porque su driver trae sus propias CAs. El síntoma es
+
+```
+self-signed certificate in certificate chain
+```
+
+al leer el Sheet, y el 07/09/2026 dejó 13 matrículas sin procesar en 3 periodos
+mientras el navegador entraba a SINU sin problema.
+
+Se resuelve una vez, exportando esa CA a `config/ca_kaspersky.pem`:
+
+```powershell
+$c = Get-ChildItem Cert:\LocalMachine\Root |
+     Where-Object { $_.Subject -like '*Kaspersky*' } |
+     Select-Object -First 1
+$b = [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks')
+"-----BEGIN CERTIFICATE-----`n$b`n-----END CERTIFICATE-----" |
+    Set-Content config\ca_kaspersky.pem -Encoding ascii
+```
+
+El proyecto la detecta sola al arrancar. **No se versiona** (`*.pem` está en el
+`.gitignore`): cada equipo exporta la suya.
+
+Se prefirió esto a `ignore_https_errors=True` porque añadir una raíz concreta
+mantiene la validación del certificado, mientras que desactivarla la quita
+entera y daría por buena cualquier interceptación, no solo la conocida.
+
+### La primera prueba: en simulación
+
+```powershell
+.\.venv\Scripts\python.exe scripts\dia_completo.py
+```
+
+Sin `--ejecutar-de-verdad` recorre las seis etapas, entra a SINU, lee las
+grillas y dice qué haría — **sin escribir nada**. Es el valor por defecto de la
+plantilla (`MODO_SIMULACION=true`), así que un clon nuevo arranca seguro.
+
+### Antes de que más de una persona procese de verdad
+
+Separar cuentas resuelve el choque de sesiones en SINU, pero **no** evita que
+dos personas procesen las mismas matrículas el mismo día: el diario
+`logs/resultados_etapa4.jsonl` es **local a cada equipo**, así que
+`--saltar-hechas` no sabe lo que hizo el otro.
+
+El caso malo no es el trabajo duplicado. Es que uno recicle —desvincular y
+volver a vincular— una matrícula que el otro acaba de dejar bien, y que un
+fallo en esa ventana deje al estudiante desvinculado.
+
+Mientras eso no tenga una guarda en el código, **acuérdenlo por fuera**: una
+sola persona con `--ejecutar-de-verdad` al día. Para validar, simulación.
+
 ## El día completo en un comando
 
 ```powershell
