@@ -48,4 +48,4 @@ isef07_grabado_*.py
 logs/captura_*.jsonl
 
 # --- ajustes locales de Claude Code (no son del proyecto) ---
-.claude/
+
