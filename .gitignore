@@ -47,8 +47,13 @@ desktop.ini
 isef07_grabado_*.py
 logs/captura_*.jsonl
 
-# --- ajustes locales de herramientas de desarrollo ---
-# Son de la maquina de quien trabaja, no del proyecto. La carpeta se ignora
-# aunque ahora mismo no exista: estas herramientas la recrean solas, y sin la
-# regla el siguiente `git add .` la subiria.
+# --- ajustes locales de editores y herramientas ---
+# Las carpetas que crean las herramientas de desarrollo en la raiz del
+# proyecto NO se listan aqui: son de la maquina de quien trabaja, no del
+# proyecto, y van en el .gitignore GLOBAL de cada equipo. Se configura una
+# sola vez:
+#
+#     git config --global core.excludesFile %USERPROFILE%\.gitignore_global
+#
+# Quien clone este repositorio deberia tenerlo puesto antes de empezar.
 
