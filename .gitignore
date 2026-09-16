@@ -47,4 +47,8 @@ desktop.ini
 isef07_grabado_*.py
 logs/captura_*.jsonl
 
+# --- ajustes locales de herramientas de desarrollo ---
+# Son de la maquina de quien trabaja, no del proyecto. La carpeta se ignora
+# aunque ahora mismo no exista: estas herramientas la recrean solas, y sin la
+# regla el siguiente `git add .` la subiria.
 
