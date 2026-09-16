@@ -88,8 +88,9 @@ py -3.11 -m venv .venv
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-Al final debe decir algo como **`532 passed`**. Si dice eso, el programa está
-bien instalado.
+Al final debe decir algo como **`539 passed`**. Lo que importa no es el número
+—va creciendo— sino que diga **`passed`** y que **no aparezca la palabra
+`failed`**. Si es así, el programa está bien instalado.
 
 ---
 
