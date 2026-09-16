@@ -59,6 +59,7 @@ from moodle_sinu.ejecutor_sinu import (  # noqa: E402
 from moodle_sinu.constantes_sinu import MODULOS_DE_ESCALADO  # noqa: E402
 from moodle_sinu import diario_resultados as diario  # noqa: E402
 from moodle_sinu.lector_reporte import ErrorEstructuraReporte  # noqa: E402
+from moodle_sinu.lector_isef05 import GrupoEnMoodle, consultar_grupo  # noqa: E402
 from moodle_sinu.constantes_sinu import ACTIVIDAD_VINCULACION  # noqa: E402
 from moodle_sinu.lector_sinu import (  # noqa: E402
     ErrorLecturaSinu,
@@ -126,6 +127,13 @@ def _argumentos() -> argparse.Namespace:
         "reciclado innecesario abre una ventana en la que la materia queda "
         "desvinculada.",
     )
+    p.add_argument(
+        "--sin-consultar-isef05",
+        action="store_true",
+        help="No pregunta a ISEF05 que grupos tienen curso en MOODLE. El lote se "
+        "procesa entero como antes de que esa comprobacion existiera. Para "
+        "cuando ISEF05 no responda, o para comparar comportamientos.",
+    )
     p.add_argument("--visible", action="store_true", help="Navegador con ventana")
     p.add_argument("--traza", action="store_true", help="Traza de Playwright en logs/")
     p.add_argument("--verbose", "-v", action="store_true", help="Log en DEBUG")
@@ -163,6 +171,66 @@ def _anotar(operacion, veredicto, motivo: str, detalle: str = "", r=None) -> Non
         acciones=list(r.acciones_ejecutadas) if r is not None else [],
         segundos=r.segundos if r is not None else 0.0,
     )
+
+
+def _grupos_sin_curso_en_moodle(
+    page,
+    cfg,
+    operaciones: list,
+    cod_periodo: str,
+    *,
+    saltar: bool = False,
+) -> dict[str, GrupoEnMoodle]:
+    """Pregunta a ISEF05 que grupos del lote NO tienen curso en MOODLE.
+
+    Devuelve solo los imposibles, indexados por 'MATERIA/GRUPO'. Se consulta
+    una vez por GRUPO y no por estudiante: cuatro estudiantes de DTA32/55598
+    son una sola pregunta, no cuatro.
+
+    Un fallo de la consulta NO deja fuera al grupo. La direccion segura es
+    procesar de mas, no de menos: si ISEF05 no contesta, el lote sigue
+    exactamente como antes de que esta comprobacion existiera.
+    """
+    if saltar:
+        log.info("Consulta a ISEF05 omitida por --sin-consultar-isef05.")
+        return {}
+
+    objetivos: dict[str, tuple[str, str]] = {}
+    for o in operaciones:
+        if o.cod_materia and o.num_grupo:
+            objetivos.setdefault(o.objetivo, (o.cod_materia, o.num_grupo))
+    if not objetivos:
+        return {}
+
+    print()
+    print(f"Consultando en ISEF05 los {len(objetivos)} grupo(s) del lote...")
+    imposibles: dict[str, GrupoEnMoodle] = {}
+    for objetivo, (materia, grupo) in objetivos.items():
+        try:
+            r = consultar_grupo(
+                page, cfg,
+                cod_periodo=cod_periodo, cod_materia=materia, num_grupo=grupo,
+            )
+        except (ErrorLecturaSinu, ErrorRestriccionOperativa) as exc:
+            # Se avisa y se sigue: no saber no puede convertirse en un rojo.
+            log.warning("ISEF05 no pudo contestar por %s: %s", objetivo, exc)
+            print(f"  ?  {objetivo}: no se pudo consultar, se procesara igual")
+            continue
+        if r.vincular_es_imposible:
+            imposibles[objetivo] = r
+            print(f"  !! {objetivo}: SIN curso en MOODLE, no se intentara")
+        else:
+            print(f"  ok {objetivo}: tiene curso en MOODLE")
+
+    if imposibles:
+        n = sum(1 for o in operaciones if o.objetivo in imposibles)
+        print()
+        print(
+            f"  {len(imposibles)} grupo(s) sin curso en MOODLE -> {n} unidad(es) "
+            "en ROJO sin tocar ISEF07."
+        )
+        print("  Eso NO se arregla reintentando: hay que CREAR el curso en MOODLE.")
+    return imposibles
 
 
 def _avisar_ciclos_previos() -> bool:
@@ -279,6 +347,10 @@ def main() -> int:
     #: vincular. Van aparte de `detenidos` porque el siguiente paso es distinto:
     #: consultar ISEF05/PACF50 y anotar el resultado en el Sheet, no reintentar.
     escalados: list[tuple[str, str]] = []
+    #: Unidades que no se intentaron porque ISEF05 dijo que su grupo no tiene
+    #: curso en MOODLE. No son un fallo de la corrida: son trabajo que no se
+    #: puede hacer hasta que alguien cree el curso.
+    sin_curso_hechas: list[str] = []
 
     with sync_playwright() as pw:
         context, cerrar = abrir_contexto(pw, cfg, sin_cabeza)
@@ -376,6 +448,19 @@ def main() -> int:
                 log.error("%s", exc)
                 return 1
 
+            # --- PASO 2.5: que grupos son IMPOSIBLES de vincular -------------
+            # Se pregunta ANTES de entrar en ISEF07, y no al primer fallo, por
+            # dos motivos:
+            #
+            #   - ISEF07 fija su periodo una sola vez por lote. Salir a ISEF05
+            #     a mitad y volver obligaria a rehacer ese estado, que es justo
+            #     el que no conviene tocar.
+            #   - Preguntando antes no se gasta ni un intento. Preguntando al
+            #     primer fallo se gastarian los 3x90s de ese primer estudiante.
+            sin_curso = _grupos_sin_curso_en_moodle(
+                page, cfg, operaciones, lote.cod_periodo, saltar=args.sin_consultar_isef05
+            )
+
             # Faltaba ABRIR el modulo. Sin esto la corrida se quedaba en #home
             # (la lista de modulos) y ningun estudiante se podia leer: el filtro
             # de cedula no existe ahi. El sintoma enganaba, porque el Periodo SI
@@ -434,6 +519,32 @@ def main() -> int:
                     _anotar(
                         operacion, diario.Veredicto.ROJO, diario.MOTIVO_NO_LEIDO,
                         "la fila del reporte no trae COD_MATERIA",
+                    )
+                    continue
+
+                # ISEF05 ya dijo que en este grupo no hay curso en MOODLE. No
+                # se abre el estudiante siquiera: sin curso no hay nada a lo
+                # que vincular, y los 3x90s de sondeo darian el mismo NO.
+                imposible = sin_curso.get(objetivo)
+                if imposible is not None:
+                    # En simulacion NO se apunta, igual que con las unidades que
+                    # si se procesan: el diario pinta el Sheet del dia, y un
+                    # ensayo no puede dejar rojos de verdad en el.
+                    if de_verdad:
+                        _anotar(
+                            operacion,
+                            diario.Veredicto.ROJO,
+                            diario.MOTIVO_SIN_CURSO_MOODLE,
+                            f"{objetivo} no tiene curso en MOODLE segun ISEF05 "
+                            f"({imposible.resumen()}). Vincular es imposible "
+                            "hasta que el curso exista; no se intento.",
+                        )
+                    sin_curso_hechas.append(f"{cedula} / {objetivo}")
+                    print(
+                        f"[{i}/{len(operaciones)}] {cedula} / {objetivo}: "
+                        "sin curso en MOODLE -> ROJO, no se toca"
+                        + ("" if de_verdad else " (ensayo: no se apunta)"),
+                        flush=True,
                     )
                     continue
 
@@ -602,6 +713,16 @@ def main() -> int:
             "validar el check en Moodle y anotarlo en el Sheet del dia."
         )
         print(f"   Registro: {RUTA_ESCALADO}")
+    if sin_curso_hechas:
+        print()
+        print(
+            f"-> {len(sin_curso_hechas)} UNIDAD(ES) NO SE INTENTARON: su grupo no "
+            "tiene curso en MOODLE (ISEF05)."
+        )
+        for linea in sin_curso_hechas[:10]:
+            print(f"   {linea}")
+        print("   Esto NO se valida ni se reintenta: hay que CREAR el curso en")
+        print("   MOODLE. Mientras no exista, vincular es imposible.")
     if abiertos:
         print()
         print(f"!! {len(abiertos)} ESTUDIANTES QUEDARON DESVINCULADOS: {', '.join(abiertos)}")

@@ -18,7 +18,8 @@ Moodle vs. SINU de Power BI.
 | 3 | Clasificación de casos en SINU — **modo lectura** | ✅ Verificada (01/09/2026): lectura real de la grilla Grupos |
 | 4 | Ejecución en ISEF07 (vincular / reciclar) | ✅ Verificada end-to-end (01/09/2026) — 3 cerrojos, `MODO_SIMULACION=false` |
 | 4b | Confirmación del check tras cada acción | ✅ Implementada (03/09/2026) — se relee la grilla, no se cree al diálogo |
-| 4c | Consulta automática de ISEF05/PACF50 + anotación en el Sheet | ⏳ **Falta** — los casos se detectan y se registran, resolverlos es manual |
+| 4c | Consulta automática de ISEF05 antes de procesar | ✅ Implementada (16/09/2026) — los grupos sin curso en Moodle no se intentan |
+| 4d | Consulta de PACF50 + anotación automática en el Sheet | ⏳ **Falta** — PACF50 sigue sin documentar |
 | 5 | Escritura de colores + validación en el Sheet | ⏳ |
 | 6 | Programación diaria (Task Scheduler) | ⏳ |
 
@@ -38,7 +39,7 @@ defecto: `NAVEGADOR_CANAL=chrome` usa el Chrome que ya está instalado en el
 equipo. Solo es necesario si se cambia a `NAVEGADOR_CANAL=chromium`.
 
 Comprobado sobre un clon recién hecho: sin ningún navegador de Playwright
-descargado, las 532 pruebas pasan y el asistente da el entorno por bueno.
+descargado, las 539 pruebas pasan y el asistente da el entorno por bueno.
 
 Y en vez de copiar el `.env` a mano, conviene usar el asistente: lo crea, dice
 qué claves faltan y verifica las sesiones. Ver la sección siguiente.
@@ -1154,8 +1155,8 @@ lista aparte de los fallos, porque el siguiente paso es distinto: consultar, no
 reintentar. Estos casos **no** hacen fallar la corrida (código 0): son un
 desenlace previsto que necesita a una persona.
 
-**Lo que falta (4c):** abrir ISEF05 y PACF50 automáticamente y escribir el
-resultado en el Sheet. Hoy eso es manual. Los tres motivos que se registran:
+**Lo que falta (4d):** PACF50 y la anotación automática en el Sheet. Los tres
+motivos que se registran:
 
 | Motivo | Origen |
 |---|---|
@@ -1166,6 +1167,55 @@ resultado en el Sheet. Hoy eso es manual. Los tres motivos que se registran:
 ISEF05 y PACF50 siguen siendo **solo lectura** en
 [`restricciones_sinu.py`](src/moodle_sinu/restricciones_sinu.py). El escalado no
 relaja esa barrera: se consultan, no se tocan.
+
+### Preguntar a ISEF05 ANTES, no reintentar después (16/09/2026)
+
+El escalado de arriba deja una pregunta sin responder: *por qué* no aparece el
+check. Cuando la razón es que el grupo no tiene curso creado en Moodle,
+reintentar no puede funcionar nunca — y se reintentaba cada día.
+
+`DTA32/55598` (26V05) es el caso que lo destapó: falló con sus **cuatro**
+estudiantes el 07, el 15 y el 16/09/2026. A ~360 s cada uno (3 intentos × 90 s
+de sondeo), son unos **24 minutos por corrida**, tres corridas seguidas, y tres
+clics de «Vincular» por estudiante y día contra un grupo donde vincular es
+imposible.
+
+ISEF05 («Integración Masiva con MOODLE») lo contesta en unos segundos. Su
+rejilla *Grupos* se filtra por `cod_materia` y `num_grupo` — los mismos nombres
+de campo que ISEF07 — y tiene la columna `Cursos en moodle?`. Medido el
+16/09/2026:
+
+| Grupo | `Cursos en moodle?` | Resultado ese día en ISEF07 |
+|---|---|---|
+| `DTA32/55598` | ❌ no | 🔴 rojo, 4 estudiantes, 3 días seguidos |
+| `AED31/55522` | ✅ sí | 🟢 verde |
+| `DTA05/55570` | ✅ sí | 🟢 verde |
+
+Por eso [`lector_isef05.py`](src/moodle_sinu/lector_isef05.py) consulta **una vez
+por grupo** (no por estudiante) al empezar cada lote, y las unidades de un grupo
+sin curso se marcan `sin-curso-en-moodle` sin abrir ISEF07 siquiera.
+
+Tres decisiones que no son obvias:
+
+- **Se pregunta antes de entrar en ISEF07, no al primer fallo.** ISEF07 fija su
+  periodo una sola vez por lote; salir a ISEF05 a mitad y volver obligaría a
+  rehacer ese estado. Preguntando antes tampoco se gasta el primer intento.
+- **Un check ilegible (`None`) no es un «no».** `vincular_es_imposible` responde
+  `True` solo con `curso is False`. Si ISEF05 no contesta o no se deja leer, el
+  lote se procesa igual que antes: procesar de más es recuperable, marcar en
+  rojo sin comprobarlo no.
+- **`sin-curso-en-moodle` es un motivo distinto de `check-no-confirmado`,** y la
+  acción es la contraria: no hay nada que validar, hay que **crear el curso en
+  Moodle**. Confundirlos manda al operador a verificar en ISEF05 algo que ISEF05
+  ya contestó.
+
+Se desactiva con `--sin-consultar-isef05`.
+
+> ⚠️ **ISEF05 no es una pantalla inocua.** Lleva un desplegable `Actividad` y una
+> casilla **«Borra la actividad seleccionada en MOODLE?»**: desde ahí se pueden
+> borrar cursos en bloque. El lector solo escribe en dos cajas de filtro y mueve
+> el scroll — no selecciona filas, no toca el desplegable, no pulsa botones. La
+> matriz de permisos mantiene `isef05` fuera de `MODULOS_ESCRIBIBLES`.
 
 ### Tres cerrojos, hay que abrir los tres
 

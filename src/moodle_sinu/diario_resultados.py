@@ -70,6 +70,20 @@ MOTIVO_DESBORDE = "accion-se-desbordo"
 #: uno se valida a mano, el otro se reintenta.
 MOTIVO_FALLO_TECNICO = "fallo-tecnico"
 
+#: ISEF05 dice que el grupo NO tiene curso creado en MOODLE, asi que vincular
+#: es imposible y no se intenta. Va aparte de MOTIVO_CHECK_NO_CONFIRMADO a
+#: proposito, porque lo que hay que hacer es lo contrario:
+#:
+#:   - check-no-confirmado : se intento, no se sabe por que fallo -> validar.
+#:   - sin-curso-en-moodle : se sabe por que, y no hay nada que validar ->
+#:     CREAR EL CURSO en MOODLE. Hasta que exista, reintentar no puede salir
+#:     bien.
+#:
+#: Confundirlos mandaria al operador a verificar en ISEF05 algo que ISEF05 ya
+#: contesto. `DTA32/55598` (26V05) se reintento asi el 07, el 15 y el 16/09/2026:
+#: cuatro estudiantes, tres intentos cada uno, ~24 minutos por corrida.
+MOTIVO_SIN_CURSO_MOODLE = "sin-curso-en-moodle"
+
 
 def apuntar(
     *,

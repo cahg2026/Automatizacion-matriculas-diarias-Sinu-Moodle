@@ -31,7 +31,7 @@ Si el proceso descrito es nuevo, ejecútalo en modo asistido paso a paso, docume
 | Caso de uso | Actividad del sistema | Archivo de referencia | Estado |
 |---|---|---|---|
 | Vinculación individual de estudiantes a Moodle (cédula por cédula) | ISEF07 | `references/vinculacion-moodle.md` | Listo |
-| Integración masiva con Moodle | ISEF05 | *(pendiente de documentar)* | Por hacer — probablemente la versión masiva del mismo caso de arriba; documentar cuando el usuario lo enseñe |
+| Integración masiva con Moodle | ISEF05 | `references/consulta-curso-moodle-isef05.md` | Listo **como consulta** (16/09/2026). La parte de ejecución masiva sigue sin documentar y no se usa |
 | Programación de grupos | PACF50 | *(pendiente de documentar)* | Por hacer |
 
 Cuando se documente un caso nuevo, agrega una fila aquí apuntando a su archivo de referencia. Mantén esta tabla como la puerta de entrada — es lo primero que se lee para decidir a qué referencia ir.
