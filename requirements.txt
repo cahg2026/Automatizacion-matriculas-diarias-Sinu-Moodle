@@ -1,19 +1,41 @@
 # Automatizacion Validacion Moodle vs SINU
-# Python 3.11
+# Python 3.11.9 (probado con esa version exacta; 3.11.x deberia servir)
+#
+# Instalar:  .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# Todas las versiones estan fijadas a las que corren en produccion al
+# 15/10/2026 (salida de `pip freeze` del .venv). Las dependencias indirectas
+# tambien van fijadas: un `pip install` en otro equipo debe dar el mismo
+# entorno, no el mas reciente.
+#
+# El resto de lo que usa el codigo (tkinter, smtplib, csv, asyncio...) viene
+# con Python y no se instala aparte.
 
-# --- Fase 1: lectura y validacion del reporte ---
+# --- Fase 1: lectura, validacion y marcado del reporte (.xlsx) ---
 openpyxl==3.1.5
+et_xmlfile==2.0.0           # dependencia de openpyxl
 
-# --- Etapa 1: RPA sobre Power BI (SINU no tiene API publica) ---
+# --- RPA sobre Power BI, SINU y Google Drive (no hay API utilizable) ---
+# Usa el Microsoft Edge INSTALADO (NAVEGADOR_CANAL=msedge), asi que no hace
+# falta `playwright install`. Drive se maneja por navegador porque la
+# organizacion no concede acceso a Google Cloud Console.
 playwright==1.47.0
+greenlet==3.0.3             # dependencia de playwright
+pyee==12.0.0                # dependencia de playwright
+typing_extensions==4.16.0   # dependencia de pyee
 
-# --- Etapas 2/5: Google Drive por navegador ---
-# No hay dependencias de Google: la organizacion no concede acceso a Google
-# Cloud Console, asi que Drive se maneja con RPA (playwright, arriba) sobre el
-# mismo perfil persistente de la etapa 1.
-
-# --- utilidades ---
+# --- configuracion (config/.env) ---
 python-dotenv==1.0.1
 
-# --- desarrollo ---
+# --- desarrollo y pruebas ---
 pytest==8.3.3
+iniconfig==2.3.0            # dependencia de pytest
+pluggy==1.6.0               # dependencia de pytest
+packaging==26.3             # dependencia de pytest
+colorama==0.4.6             # dependencia de pytest en Windows
+pyflakes==3.4.0             # revision estatica: python -m pyflakes src scripts tests
+
+# --- mantenimiento del repositorio ---
+# Se uso para limpiar el historial cuando se colo un .env con contrasenas.
+# No lo necesita la automatizacion; solo quien administre el repositorio.
+git-filter-repo==2.47.0

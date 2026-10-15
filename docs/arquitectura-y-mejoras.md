@@ -124,6 +124,32 @@ Un único presupuesto no puede servir a la vez a un filtro de columna (1 s) y a 
 
 El caso `DTA32/55598` lo ilustra: 4 estudiantes × 3 intentos × 3 días, ~24 minutos por corrida, contra un grupo sin curso en Moodle donde vincular **nunca** iba a funcionar. La consulta a ISEF05 que se añadió el 16/09 resuelve esa causa concreta; el principio general —**clasificar antes de reintentar**— sigue sin estar modelado.
 
+> **Resuelto el 25/09/2026.** El dueño del proceso sustituyó los 3 intentos por uno solo (`INTENTOS_POR_UNIDAD = 1`) y añadió el cortocircuito por shortname: el primer escalado de un grupo cierra en lote las filas que le quedan. Es «clasificar antes de reintentar» resuelto por el otro lado — en vez de clasificar la causa, se deja de reintentar y se clasifica *después*, a mano, en ISEF05/PACF50.
+>
+> **Lo que hay que saber antes de esperar mucho de ello:** medido contra `resultados_etapa4.jsonl`, el 25/09 el bucle de reintentos se disparó **una sola vez** en 229 filas, y las 117 filas no verdes de ese día costaron **6 de los 231 minutos**. El ahorro está en los días malos (los del tipo `DTA32/55598`), no en un día normal. Ver §3.7, que es donde está el tiempo de verdad.
+
+### 3.7 El tiempo de la etapa 4 está en el reciclado, no en los reintentos
+
+Medido sobre `logs/resultados_etapa4.jsonl`, corrida del **25/09/2026**: 229 filas, **231 minutos**.
+
+| Dónde se fue | Filas | Media | Total |
+|---|---:|---:|---:|
+| Verdes con **2 acciones** (reciclado: desvincular + vincular) | 107 | 124 s | **221 min** |
+| Verdes con **1 acción** (solo vincular) | 5 | 43 s | 3,6 min |
+| Todo lo que **no** salió verde | 117 | — | **6 min** |
+
+Tres cosas que este reparto deja claras, y que contradicen lo que parecía:
+
+1. **Los reintentos no eran el problema ese día.** El bucle de 3 intentos se disparó **una sola vez** en 229 filas. Las 117 filas no verdes costaron 6 de los 231 minutos, porque 96 son `materia-no-esta-en-sinu` y 17 `no-se-pudo-leer`: ninguna toca ISEF07, y las dos cuestan 0 s. La regla del intento único y el cortocircuito por shortname (§3.5) siguen valiendo la pena — en los días tipo `DTA32/55598` ahorran ~24 min — pero **no son la palanca de un día normal.**
+
+2. **Una fila reciclada cuesta 2,9× una fila que solo se vincula** (124 s contra 43 s). Si las 107 recicladas costaran lo que una vinculación simple, serían 77 minutos en vez de 221. Ahí están las dos horas.
+
+3. **De ese sobrecoste, la parte más grande es una guarda que se puede apagar.** `COMPROBAR_DESBORDE` relee la grilla **completa y sin filtro** tras *cada* escritura, y el propio módulo cifra esa relectura en ~15 s. Un reciclado son dos escrituras: 107 × 2 × 15 s ≈ **53 minutos**. `ejecutor_sinu.py` ya dice que se puede poner en `False` «cuando el confinamiento esté confirmado en una corrida supervisada — y no antes».
+
+**Lo que yo no haría sin que lo decida el dueño del proceso:** apagar esa guarda. Es lo que impide repetir el incidente nº 4 (34 asignaturas recicladas cuando correspondían 5) de forma invisible. La secuencia correcta es una corrida supervisada que confirme que el filtro de `COD_MATERIA` confina la acción, y **luego** apagarla — no al revés.
+
+**Lo que hay que mirar antes que eso:** las 107 filas recicladas son materias que **ya estaban vinculadas** y se deshacen para volver a hacerse, por la regla del 21/08/2026. Son 221 de los 231 minutos del día dedicados a dejar las cosas como ya estaban. Si esa regla admitiera excepciones —por ejemplo, no reciclar lo que ya está verde y confirmado en Moodle— el día bajaría de dos horas sin tocar ninguna guarda. Eso es una decisión de negocio, no técnica.
+
 ### 3.6 Los diarios se reproducen enteros, sin compactación ni versión de esquema
 
 `ciclos_abiertos()` lee y reproduce `ciclos_abiertos.jsonl` completo en cada arranque para calcular el estado actual. El archivo va por 87 KB y solo crece. Es *event sourcing* sin *snapshot* y sin campo de versión: el día que cambie la forma de un apunte, los viejos no se podrán distinguir de los nuevos.

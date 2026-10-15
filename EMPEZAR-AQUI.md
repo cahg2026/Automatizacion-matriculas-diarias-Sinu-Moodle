@@ -23,7 +23,8 @@ Sin esas dos cosas el proceso no puede terminar. Todo lo demás ya viene puesto.
 
 Y asegúrese de tener:
 
-- **Google Chrome** instalado.
+- **Microsoft Edge** instalado. Viene con Windows; la automatización trabaja
+  con Edge desde el 24/09/2026 (con Chrome la descarga de Power BI fallaba).
 - **Su usuario y contraseña de SINU**, con permiso para entrar al módulo
   **ISEF07**. Si no sabe si lo tiene, el programa se lo dirá claramente.
 
@@ -34,7 +35,7 @@ Y asegúrese de tener:
 Python es el lenguaje en el que está escrita la automatización. Se instala una
 sola vez.
 
-1. Abra Chrome y vaya a **https://www.python.org/downloads/release/python-3119/**
+1. Abra su navegador y vaya a **https://www.python.org/downloads/release/python-3119/**
 2. Baje hasta el final de la página, a la tabla de archivos.
 3. Haga clic en **Windows installer (64-bit)**.
 4. Abra el archivo que se descargó.
@@ -48,7 +49,7 @@ sola vez.
 
 ## Paso 2 — Descargar el proyecto
 
-1. Abra Chrome y entre al repositorio que le compartieron en GitHub.
+1. Abra su navegador y entre al repositorio que le compartieron en GitHub.
 2. Busque el botón verde que dice **Code** y haga clic.
 3. Elija **Download ZIP**.
 4. Cuando termine de bajar, busque el archivo en su carpeta de Descargas.
@@ -102,14 +103,14 @@ Al final debe decir algo como **`539 passed`**. Lo que importa no es el número
 .venv\Scripts\python.exe scripts\primera_vez.py
 ```
 
-2. El programa le dirá que faltan **3 datos**. Ahora los va a poner.
+2. El programa le dirá que faltan **4 datos**. Ahora los va a poner.
 3. Copie y pegue esto para abrir el archivo:
 
 ```
 notepad config\.env
 ```
 
-4. Se abre el Bloc de notas. Busque estas **tres líneas** y escriba el valor
+4. Se abre el Bloc de notas. Busque estas **cuatro líneas** y escriba el valor
    **justo después del signo igual, sin espacios**:
 
 | Línea | Qué escribir |
@@ -117,6 +118,7 @@ notepad config\.env
 | `POWERBI_PASSWORD=` | La contraseña de Power BI que le pasaron |
 | `SINU_USUARIO=` | **Su** usuario de SINU |
 | `SINU_PASSWORD=` | **Su** contraseña de SINU |
+| `POWERBI_PERFIL_NAVEGADOR=` | La carpeta donde Edge guardará las sesiones de la automatización. Use `C:\Users\<su usuario de Windows>\.playwright-perfil-msedge`. **No la ponga dentro de OneDrive** |
 
 Debe quedar así (con sus datos reales):
 
@@ -124,6 +126,7 @@ Debe quedar así (con sus datos reales):
 POWERBI_PASSWORD=LaQueLePasaron
 SINU_USUARIO=1234567890
 SINU_PASSWORD=SuContraseña
+POWERBI_PERFIL_NAVEGADOR=C:\Users\su_usuario\.playwright-perfil-msedge
 ```
 
 5. **Guarde** con `Ctrl + S` y cierre el Bloc de notas.
@@ -148,7 +151,7 @@ páginas por usted; **usted solo escribe sus contraseñas**.
 .venv\Scripts\python.exe scripts\primera_vez.py
 ```
 
-2. Se abrirá **Chrome** y pasará por cuatro páginas, una por una:
+2. Se abrirá **Edge** y pasará por cuatro páginas, una por una:
 
 | | Con qué cuenta entrar |
 |---|---|
@@ -254,6 +257,26 @@ El programa se protege solo —si detecta que alguien ya procesó hoy, se detien
 antes de tocar nada—, pero **acuérdenlo igual entre ustedes**.
 
 Para probar cuantas veces quiera: use el Paso 6, que no escribe nada.
+
+---
+
+## Para entender el proceso
+
+Todo está en la carpeta **`docs`**. Los `.html` se abren con doble clic.
+
+| Documento | Para qué sirve |
+|---|---|
+| `docs/flujo-y-tipificaciones.html` | **Empiece por este.** Diagrama del día en 6 pasos, el árbol que decide el color de cada fila y qué hacer con cada color del Sheet |
+| `docs/documentacion-proceso.html` | El proceso completo explicado, con sus decisiones |
+| `docs/guia-instalacion.html` | Esta misma guía de instalación, con más detalle |
+| `docs/estado-20261015.md` | Cómo está la automatización al 15/10/2026 y qué queda pendiente |
+
+Dos reglas que conviene tener presentes:
+
+- **Cada día se procesa de cero.** La integración mueve matrículas todos los
+  días, así que lo que vuelva a salir en el reporte se procesa otra vez.
+- **Las decisiones manuales valen solo para ese día.** Si se pide no procesar
+  un período o un grupo, no se deja configurado para los días siguientes.
 
 ---
 

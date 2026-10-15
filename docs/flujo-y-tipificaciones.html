@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vinculación Moodle–SINU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+body { margin: 0; }
+/* Layout: una sola columna de lectura; los dos diagramas son las piezas anchas, la tabla cierra como referencia. */
+:root {
+  --paper: #f5f7f8;
+  --surface: #ffffff;
+  --ink: #17242e;
+  --ink-soft: #52626e;
+  --line: #c9d3da;
+  --accent: #0d6680;
+  --accent-soft: #e2eff3;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+  /* Colores reales del Sheet: iguales en los dos temas, porque son los del archivo */
+  --sh-verde: #90EE90;
+  --sh-rojo: #FFC7CE;
+  --sh-fucsia: #FF00FF;
+  --sh-amarillo: #FFFF00;
+  --sh-naranja: #FFA500;
+  --sh-azul: #ADD8E6;
+  --sh-morado: #9966CC;
+  --sh-ink: #1d1d1f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #10171c;
+    --surface: #18222a;
+    --ink: #e4ebef;
+    --ink-soft: #9aaab5;
+    --line: #34444f;
+    --accent: #5fb8d3;
+    --accent-soft: #173341;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #10171c;
+  --surface: #18222a;
+  --ink: #e4ebef;
+  --ink-soft: #9aaab5;
+  --line: #34444f;
+  --accent: #5fb8d3;
+  --accent-soft: #173341;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 16.5px;
+  line-height: 1.6;
+  padding-inline: 20px;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 48px 72px; display: grid; gap: 56px; }
+.prose { max-width: 66ch; }
+
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 750; letter-spacing: -0.01em; }
+h2 { font-size: 1.6rem; font-weight: 750; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow {
+  font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--accent);
+}
+.stack { display: grid; gap: 14px; }
+.lead { font-size: 1.12rem; color: var(--ink-soft); }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+
+header.top { display: grid; gap: 16px; border-bottom: 1px solid var(--line); padding-bottom: 32px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 0.9rem; color: var(--ink-soft); }
+.meta b { color: var(--ink); font-weight: 700; }
+
+.toc { display: flex; flex-wrap: wrap; gap: 10px; }
+.toc a {
+  color: var(--accent); text-decoration: none; font-weight: 700; font-size: 0.92rem;
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; background: var(--surface);
+}
+.toc a:hover { border-color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Diagramas */
+figure { margin: 0; display: grid; gap: 14px; }
+.diagram {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 20px 12px; overflow-x: auto;
+}
+.diagram svg { display: block; margin: 0 auto; width: 100%; min-width: 560px; max-width: 760px; height: auto; }
+figcaption { font-size: 0.92rem; color: var(--ink-soft); max-width: 66ch; }
+
+.n { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.n-q { fill: var(--paper); stroke: var(--ink-soft); stroke-width: 1.5; }
+.n-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.n-side { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.n-pill { fill: var(--ink); stroke: none; }
+.t { fill: var(--ink); font: 700 14.5px var(--f-body); }
+.ts { fill: var(--ink-soft); font: 400 12.5px var(--f-body); }
+.tm { fill: var(--ink-soft); font: 500 11.5px var(--f-mono); }
+.ta { fill: var(--accent); font: 700 12.5px var(--f-body); }
+.tp { fill: var(--paper); font: 700 13px var(--f-body); }
+.e { stroke: var(--ink-soft); stroke-width: 1.6; fill: none; }
+.el { fill: var(--ink-soft); font: 700 12px var(--f-body); }
+.ah { fill: var(--ink-soft); }
+.o { stroke: rgba(0,0,0,0.18); stroke-width: 1; }
+.ot { fill: var(--sh-ink); font: 700 13.5px var(--f-body); }
+.os { fill: var(--sh-ink); font: 400 12px var(--f-body); opacity: 0.8; }
+
+/* Día real */
+.day { display: grid; gap: 10px; }
+.bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.bar span { display: flex; align-items: center; padding-inline: 10px; font-weight: 700; font-size: 0.85rem; color: var(--sh-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 0.88rem; color: var(--ink-soft); }
+
+/* Tabla */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.93rem; }
+th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); font-weight: 700; background: var(--paper); }
+tr:last-child td { border-bottom: none; }
+tr.group td {
+  background: var(--paper); font-family: var(--f-display); font-weight: 600; font-size: 0.95rem; padding-block: 9px;
+}
+.sw { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-weight: 700; }
+.sw i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); flex: none; }
+.label { font-family: var(--f-mono); font-size: 0.8rem; font-weight: 500; background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; display: inline-block; }
+td.do { font-weight: 700; }
+
+/* Reglas */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.rule { border-top: 3px solid var(--accent); background: var(--surface); padding: 16px 18px; border-radius: 0 0 8px 8px; display: grid; gap: 6px; }
+.rule p { font-size: 0.93rem; color: var(--ink-soft); }
+
+footer { font-size: 0.85rem; color: var(--ink-soft); border-top: 1px solid var(--line); padding-top: 20px; }
+
+@media (max-width: 480px) {
+  body { font-size: 15.5px; padding-inline: 16px; }
+  .wrap { padding-block: 32px 56px; gap: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="top">
+    <span class="eyebrow">CUN · Proceso diario automatizado</span>
+    <h1>Vinculación Moodle–SINU</h1>
+    <p class="lead prose">Cada mañana, un robot toma el reporte de estudiantes con matrícula pendiente en Moodle, los vincula a su grupo en SINU y deja el resultado pintado en un Google Sheet. Esta página explica qué hace en cada paso y qué significa cada color.</p>
+    <div class="meta">
+      <span><b>Arranca:</b> 9:00 a. m., solo</span>
+      <span><b>Resultado:</b> un Sheet pintado en Drive</span>
+      <span><b>Módulos de SINU:</b> ISEF07, PACF50</span>
+    </div>
+    <nav class="toc" aria-label="Contenido">
+      <a href="#flujo">1. El flujo del día</a>
+      <a href="#arbol">2. Cómo se decide cada fila</a>
+      <a href="#colores">3. Qué significa cada color</a>
+      <a href="#reglas">4. Reglas que conviene saber</a>
+    </nav>
+  </header>
+
+  <!-- ============ FLUJO ============ -->
+  <section id="flujo" class="stack">
+    <span class="eyebrow">Parte 1</span>
+    <h2>El flujo del día</h2>
+    <p class="prose">Son seis pasos en orden. Si algo falla al principio, el robot se detiene y avisa antes de tocar SINU. El paso 4 es el único que modifica matrículas.</p>
+
+    <figure>
+      <div class="diagram">
+        <svg viewBox="0 0 720 790" role="img" aria-label="Flujo diario en seis pasos: revisar el navegador, comprobar que Power BI se actualizó, descargar el reporte, limpiarlo y subir el Sheet, procesar las matrículas en SINU período por período, pintar el Sheet y cerrar el día.">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0,0 L10,5 L0,10 z"/>
+            </marker>
+          </defs>
+
+          <!-- inicio -->
+          <rect class="n-pill" x="220" y="10" width="180" height="36" rx="18"/>
+          <text class="tp" x="310" y="33" text-anchor="middle">9:00 a. m. · arranca solo</text>
+          <line class="e" x1="310" y1="46" x2="310" y2="68" marker-end="url(#a1)"/>
+
+          <!-- paso 0 -->
+          <rect class="n" x="150" y="70" width="320" height="58" rx="8"/>
+          <text class="t" x="310" y="95" text-anchor="middle">0 · Revisar el navegador</text>
+          <text class="ts" x="310" y="115" text-anchor="middle">y la sesión de Google</text>
+          <line class="e" x1="470" y1="99" x2="518" y2="99" marker-end="url(#a1)"/>
+          <text class="el" x="494" y="91" text-anchor="middle">falla</text>
+          <rect class="n-side" x="520" y="70" width="180" height="58" rx="8"/>
+          <text class="ts" x="610" y="95" text-anchor="middle">Se detiene</text>
+          <text class="ts" x="610" y="113" text-anchor="middle">y envía un aviso</text>
+          <line class="e" x1="310" y1="128" x2="310" y2="148" marker-end="url(#a1)"/>
+
+          <!-- paso 1: decisión -->
+          <polygon class="n-q" points="310,150 460,205 310,260 160,205"/>
+          <text class="t" x="310" y="201" text-anchor="middle">1 · ¿Power BI se</text>
+          <text class="t" x="310" y="220" text-anchor="middle">actualizó hoy?</text>
+          <line class="e" x1="460" y1="205" x2="518" y2="205" marker-end="url(#a1)"/>
+          <text class="el" x="489" y="197" text-anchor="middle">No</text>
+          <rect class="n-side" x="520" y="176" width="180" height="58" rx="8"/>
+          <text class="ts" x="610" y="201" text-anchor="middle">Pausa y vuelve a</text>
+          <text class="ts" x="610" y="219" text-anchor="middle">mirar a las 9:30</text>
+          <line class="e" x1="310" y1="260" x2="310" y2="288" marker-end="url(#a1)"/>
+          <text class="el" x="320" y="279">Sí</text>
+
+          <!-- paso 2 -->
+          <rect class="n" x="150" y="290" width="320" height="58" rx="8"/>
+          <text class="t" x="310" y="315" text-anchor="middle">2 · Descargar el reporte</text>
+          <text class="ts" x="310" y="335" text-anchor="middle">del tablero de Power BI</text>
+          <line class="e" x1="310" y1="348" x2="310" y2="376" marker-end="url(#a1)"/>
+
+          <!-- paso 3 -->
+          <rect class="n" x="150" y="378" width="320" height="58" rx="8"/>
+          <text class="t" x="310" y="403" text-anchor="middle">3 · Limpiar, ordenar A-Z</text>
+          <text class="ts" x="310" y="423" text-anchor="middle">y subir el Sheet a Drive</text>
+          <line class="e" x1="470" y1="407" x2="518" y2="407" marker-end="url(#a1)"/>
+          <rect class="n-side" x="520" y="378" width="180" height="58" rx="8"/>
+          <text class="ts" x="610" y="403" text-anchor="middle">Marca duplicados</text>
+          <text class="ts" x="610" y="421" text-anchor="middle">y datos incompletos</text>
+          <line class="e" x1="310" y1="436" x2="310" y2="464" marker-end="url(#a1)"/>
+
+          <!-- paso 4 -->
+          <rect class="n-acc" x="150" y="466" width="320" height="76" rx="8"/>
+          <text class="t" x="310" y="492" text-anchor="middle">4 · Procesar matrículas en SINU</text>
+          <text class="ts" x="310" y="512" text-anchor="middle">ISEF07, un período tras otro</text>
+          <text class="ta" x="310" y="531" text-anchor="middle">cada fila sigue el árbol de la parte 2</text>
+          <path class="e" d="M470,486 H498 V522 H474" marker-end="url(#a1)"/>
+          <text class="el" x="506" y="500">siguiente</text>
+          <text class="el" x="506" y="515">período</text>
+          <line class="e" x1="310" y1="542" x2="310" y2="566" marker-end="url(#a1)"/>
+
+          <!-- paso 5 -->
+          <rect class="n" x="150" y="568" width="320" height="58" rx="8"/>
+          <text class="t" x="310" y="593" text-anchor="middle">5 · Pintar el Sheet y</text>
+          <text class="ts" x="310" y="613" text-anchor="middle">escribir la columna Q</text>
+          <line class="e" x1="470" y1="597" x2="518" y2="597" marker-end="url(#a1)"/>
+          <rect class="n-side" x="520" y="568" width="180" height="58" rx="8"/>
+          <text class="ts" x="610" y="592" text-anchor="middle">Queda en Drive como</text>
+          <text class="tm" x="610" y="611" text-anchor="middle">REPORTE dd/mm/aaaa #N</text>
+          <line class="e" x1="310" y1="626" x2="310" y2="654" marker-end="url(#a1)"/>
+
+          <!-- paso 6 -->
+          <rect class="n" x="150" y="656" width="320" height="58" rx="8"/>
+          <text class="t" x="310" y="681" text-anchor="middle">6 · Cierre del día</text>
+          <text class="ts" x="310" y="701" text-anchor="middle">resumen de resultados y aviso</text>
+          <line class="e" x1="310" y1="714" x2="310" y2="742" marker-end="url(#a1)"/>
+
+          <rect class="n-pill" x="230" y="744" width="160" height="36" rx="18"/>
+          <text class="tp" x="310" y="767" text-anchor="middle">Fin del día</text>
+        </svg>
+      </div>
+      <figcaption>Recorrido completo de un día. Las cajas punteadas son salidas o avisos. Si el paso 1 encuentra el tablero sin actualizar, el robot no procesa datos viejos: espera y vuelve a mirar.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ ÁRBOL ============ -->
+  <section id="arbol" class="stack">
+    <span class="eyebrow">Parte 2</span>
+    <h2>Cómo se decide cada fila</h2>
+    <p class="prose">En el paso 4, cada fila del reporte (un estudiante con una materia) pasa por estas preguntas en orden. La primera respuesta que la saca del camino define su color y el texto de la columna Q. Solo las filas que llegan al final quedan en verde.</p>
+
+    <figure>
+      <div class="diagram">
+        <svg viewBox="0 0 760 820" role="img" aria-label="Árbol de tipificación: seis preguntas en orden. Si el grupo no existe en SINU, fucsia. Si no se encuentra al estudiante o la materia, rojo REVISAR. Si el grupo no tiene curso en Moodle, rojo SIN CHECK DE MOODLE. Luego se vincula, o se desvincula y vuelve a vincular si ya estaba vinculado. Si el check aparece, verde VINCULADA Y VALIDADA; si no, rojo ESCALADO A VALIDACIÓN MANUAL.">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0,0 L10,5 L0,10 z"/>
+            </marker>
+          </defs>
+
+          <rect class="n-pill" x="40" y="10" width="300" height="36" rx="18"/>
+          <text class="tp" x="190" y="33" text-anchor="middle">Cada fila: estudiante + materia</text>
+          <line class="e" x1="190" y1="46" x2="190" y2="62" marker-end="url(#a2)"/>
+
+          <!-- Q1 -->
+          <rect class="n-q" x="20" y="64" width="340" height="60" rx="8"/>
+          <text class="t" x="190" y="89" text-anchor="middle">¿El grupo existe en SINU?</text>
+          <text class="ts" x="190" y="109" text-anchor="middle">se consulta en PACF50</text>
+          <line class="e" x1="360" y1="94" x2="438" y2="94" marker-end="url(#a2)"/>
+          <text class="el" x="399" y="86" text-anchor="middle">No</text>
+          <rect class="o" x="440" y="66" width="300" height="56" rx="8" style="fill: var(--sh-fucsia)"/>
+          <text class="ot" x="590" y="90" text-anchor="middle">GRUPO NO EXISTE EN SINU</text>
+          <text class="os" x="590" y="108" text-anchor="middle">fucsia · no se toca SINU</text>
+          <line class="e" x1="190" y1="124" x2="190" y2="158" marker-end="url(#a2)"/>
+          <text class="el" x="200" y="146">Sí</text>
+
+          <!-- Q2 -->
+          <rect class="n-q" x="20" y="160" width="340" height="60" rx="8"/>
+          <text class="t" x="190" y="185" text-anchor="middle">¿Aparece el estudiante en ISEF07?</text>
+          <text class="ts" x="190" y="205" text-anchor="middle">una sola fila al buscar su cédula</text>
+          <line class="e" x1="360" y1="190" x2="438" y2="190" marker-end="url(#a2)"/>
+          <text class="el" x="399" y="182" text-anchor="middle">No</text>
+          <rect class="o" x="440" y="162" width="300" height="56" rx="8" style="fill: var(--sh-rojo)"/>
+          <text class="ot" x="590" y="186" text-anchor="middle">REVISAR</text>
+          <text class="os" x="590" y="204" text-anchor="middle">rojo · no se pudo leer</text>
+          <line class="e" x1="190" y1="220" x2="190" y2="254" marker-end="url(#a2)"/>
+          <text class="el" x="200" y="242">Sí</text>
+
+          <!-- Q3 -->
+          <rect class="n-q" x="20" y="256" width="340" height="60" rx="8"/>
+          <text class="t" x="190" y="281" text-anchor="middle">¿Está la materia del reporte?</text>
+          <text class="ts" x="190" y="301" text-anchor="middle">en la grilla de grupos del estudiante</text>
+          <line class="e" x1="360" y1="286" x2="438" y2="286" marker-end="url(#a2)"/>
+          <text class="el" x="399" y="278" text-anchor="middle">No</text>
+          <rect class="o" x="440" y="258" width="300" height="56" rx="8" style="fill: var(--sh-rojo)"/>
+          <text class="ot" x="590" y="282" text-anchor="middle">REVISAR</text>
+          <text class="os" x="590" y="300" text-anchor="middle">rojo · materia no está en SINU</text>
+          <line class="e" x1="190" y1="316" x2="190" y2="350" marker-end="url(#a2)"/>
+          <text class="el" x="200" y="338">Sí</text>
+
+          <!-- Q4 -->
+          <rect class="n-q" x="20" y="352" width="340" height="60" rx="8"/>
+          <text class="t" x="190" y="377" text-anchor="middle">¿El grupo tiene curso en Moodle?</text>
+          <text class="ts" x="190" y="397" text-anchor="middle">check «Curso en moodle?» en ISEF07</text>
+          <line class="e" x1="360" y1="382" x2="438" y2="382" marker-end="url(#a2)"/>
+          <text class="el" x="399" y="374" text-anchor="middle">No</text>
+          <rect class="o" x="440" y="354" width="300" height="56" rx="8" style="fill: var(--sh-rojo)"/>
+          <text class="ot" x="590" y="378" text-anchor="middle">SIN CHECK DE MOODLE</text>
+          <text class="os" x="590" y="396" text-anchor="middle">rojo · no se toca SINU</text>
+          <line class="e" x1="190" y1="412" x2="190" y2="446" marker-end="url(#a2)"/>
+          <text class="el" x="200" y="434">Sí</text>
+
+          <!-- Q5 -->
+          <rect class="n-q" x="20" y="448" width="340" height="60" rx="8"/>
+          <text class="t" x="190" y="473" text-anchor="middle">¿Ya estaba vinculado?</text>
+          <text class="ts" x="190" y="493" text-anchor="middle">check «Vinculado?» en ISEF07</text>
+
+          <line class="e" x1="100" y1="508" x2="100" y2="550" marker-end="url(#a2)"/>
+          <text class="el" x="110" y="534">No</text>
+          <line class="e" x1="280" y1="508" x2="280" y2="550" marker-end="url(#a2)"/>
+          <text class="el" x="290" y="534">Sí</text>
+
+          <rect class="n-acc" x="20" y="552" width="160" height="56" rx="8"/>
+          <text class="t" x="100" y="585" text-anchor="middle">Vincular</text>
+          <rect class="n-acc" x="200" y="552" width="160" height="56" rx="8"/>
+          <text class="t" x="280" y="576" text-anchor="middle">Desvincular y</text>
+          <text class="t" x="280" y="595" text-anchor="middle">vincular de nuevo</text>
+
+          <line class="e" x1="360" y1="580" x2="438" y2="580" marker-end="url(#a2)"/>
+          <text class="el" x="399" y="572" text-anchor="middle">se corta</text>
+          <rect class="o" x="440" y="552" width="300" height="56" rx="8" style="fill: var(--sh-rojo)"/>
+          <text class="ot" x="590" y="576" text-anchor="middle">QUEDÓ DESVINCULADA</text>
+          <text class="os" x="590" y="594" text-anchor="middle">rojo · vincular a mano en ISEF07 (urgente)</text>
+
+          <path class="e" d="M100,608 V630 H190"/>
+          <path class="e" d="M280,608 V630 H190"/>
+          <line class="e" x1="190" y1="630" x2="190" y2="652" marker-end="url(#a2)"/>
+
+          <!-- Q6 -->
+          <rect class="n-q" x="20" y="654" width="340" height="60" rx="8"/>
+          <text class="t" x="190" y="679" text-anchor="middle">¿Aparece el check «Vinculado?»</text>
+          <text class="ts" x="190" y="699" text-anchor="middle">se espera hasta 90 segundos</text>
+          <line class="e" x1="360" y1="684" x2="438" y2="684" marker-end="url(#a2)"/>
+          <text class="el" x="399" y="676" text-anchor="middle">No</text>
+          <rect class="o" x="440" y="656" width="300" height="56" rx="8" style="fill: var(--sh-rojo)"/>
+          <text class="ot" x="590" y="680" text-anchor="middle">ESCALADO A VALIDACIÓN MANUAL</text>
+          <text class="os" x="590" y="698" text-anchor="middle">rojo · revisar en ISEF05 y PACF50</text>
+          <line class="e" x1="190" y1="714" x2="190" y2="748" marker-end="url(#a2)"/>
+          <text class="el" x="200" y="736">Sí</text>
+
+          <rect class="o" x="20" y="750" width="340" height="56" rx="8" style="fill: var(--sh-verde)"/>
+          <text class="ot" x="190" y="774" text-anchor="middle">VINCULADA Y VALIDADA</text>
+          <text class="os" x="190" y="792" text-anchor="middle">verde · listo, no hay nada que hacer</text>
+        </svg>
+      </div>
+      <figcaption>Las cajas de color usan los mismos colores que se ven en el Sheet. Una fila que ya quedó en verde ese mismo día no se repite si la corrida se reanuda.</figcaption>
+    </figure>
+
+    <div class="day">
+      <h3>Así se vio un día real: 15/10/2026, 46 filas</h3>
+      <div class="bar" role="img" aria-label="10 filas en verde, 27 en fucsia y 9 en rojo">
+        <span style="width: 21.7%; background: var(--sh-verde)">10</span>
+        <span style="width: 58.7%; background: var(--sh-fucsia)">27</span>
+        <span style="width: 19.6%; background: var(--sh-rojo)">9</span>
+      </div>
+      <div class="legend">
+        <span>Verde: vinculadas y validadas</span>
+        <span>Fucsia: un período que ese día no se procesó</span>
+        <span>Rojo: para revisar a mano</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TIPIFICACIONES ============ -->
+  <section id="colores" class="stack">
+    <span class="eyebrow">Parte 3</span>
+    <h2>Qué significa cada color</h2>
+    <p class="prose">El color pinta la fila entera. El texto exacto queda en la columna Q (<span class="mono">VALIDACION_RPA</span>). Cuando el texto empieza por <span class="label">REVISAR</span>, después del guion va el motivo y la hora en que pasó.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Color</th><th>Texto en la columna Q</th><th>Qué pasó</th><th>Qué hacer</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group"><td colspan="4">Resultado en SINU (paso 4 y 5)</td></tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-verde)"></i>Verde</span></td>
+            <td><span class="label">VINCULADA Y VALIDADA</span></td>
+            <td>Se vinculó (o se desvinculó y se volvió a vincular) y el check apareció.</td>
+            <td class="do">Nada.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-fucsia)"></i>Fucsia</span></td>
+            <td><span class="label">GRUPO NO EXISTE EN SINU</span></td>
+            <td>PACF50 no tiene ese grupo programado, o el responsable del proceso lo declaró así ese día.</td>
+            <td class="do">Lo resuelve quien programa los grupos. El robot no toca SINU.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-rojo)"></i>Rojo</span></td>
+            <td><span class="label">SIN CHECK DE MOODLE</span></td>
+            <td>El grupo existe, pero no tiene el check «Curso en moodle?».</td>
+            <td class="do">Integrar el curso en Moodle. Si vuelve a salir en el reporte, se procesa ese día.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-rojo)"></i>Rojo</span></td>
+            <td><span class="label">ESCALADO A VALIDACIÓN MANUAL (ISEF05/PACF50)</span></td>
+            <td>Se ejecutó la vinculación, pero el check no apareció en 90 segundos.</td>
+            <td class="do">Confirmar en ISEF05 y PACF50 y anotarlo en el Sheet.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-rojo)"></i>Rojo</span></td>
+            <td><span class="label">QUEDO DESVINCULADA - VINCULAR A MANO EN ISEF07</span></td>
+            <td>Se desvinculó y la corrida se cortó antes de volver a vincular.</td>
+            <td class="do">Urgente: vincular a mano en ISEF07.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-rojo)"></i>Rojo</span></td>
+            <td><span class="label">REVISAR - motivo (fecha)</span></td>
+            <td>Cualquier otro caso: no se encontró al estudiante (cero o dos filas con su cédula), la materia no está en su grilla o hubo un fallo técnico.</td>
+            <td class="do">Abrir ISEF07 y mirar el caso según el motivo.</td>
+          </tr>
+
+          <tr class="group"><td colspan="4">Antes de SINU: limpieza del reporte (paso 3)</td></tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-amarillo)"></i>Amarillo</span></td>
+            <td><span class="label">DUPLICADO - VALIDAR ORIGEN</span></td>
+            <td>La fila aparece repetida con datos distintos.</td>
+            <td class="do">Validar con quien origina el dato.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-naranja)"></i>Naranja</span></td>
+            <td><span class="label">DATO INCOMPLETO - NO PROCESADO</span></td>
+            <td>Falta un campo obligatorio, así que la fila no se procesa.</td>
+            <td class="do">Completar el dato en el origen.</td>
+          </tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-azul)"></i>Azul claro</span></td>
+            <td>Sin texto propio (solo la celda)</td>
+            <td>Se corrigieron espacios sobrantes en esa celda. La fila sigue normal.</td>
+            <td class="do">Nada.</td>
+          </tr>
+
+          <tr class="group"><td colspan="4">Revisión manual, fuera del flujo diario</td></tr>
+          <tr>
+            <td><span class="sw"><i style="background: var(--sh-morado)"></i>Morado</span></td>
+            <td><span class="label">VALIDAR A MANO - ciclo sin cerrar</span></td>
+            <td>Solo aparece si alguien ejecuta la revisión de ciclos abiertos. Indica que el estudiante quedó desvinculado en otro día.</td>
+            <td class="do">Abrir ISEF07 y vincular a mano.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ REGLAS ============ -->
+  <section id="reglas" class="stack">
+    <span class="eyebrow">Parte 4</span>
+    <h2>Reglas que conviene saber</h2>
+    <div class="rules">
+      <div class="rule">
+        <h3>Cada día empieza de cero</h3>
+        <p>La integración mueve matrículas todos los días, así que un estado de ayer no vale hoy. Lo que vuelva a salir en el reporte se procesa otra vez.</p>
+      </div>
+      <div class="rule">
+        <h3>Solo la materia del reporte</h3>
+        <p>El robot nunca toca otras materias del estudiante, aunque aparezcan en su grilla de ISEF07.</p>
+      </div>
+      <div class="rule">
+        <h3>Las decisiones manuales son del día</h3>
+        <p>Si el responsable pide no procesar un período o un grupo, la orden vale solo para esa corrida.</p>
+      </div>
+      <div class="rule">
+        <h3>No usar SINU mientras corre</h3>
+        <p>El robot entra con la misma cuenta. Usar SINU en paralelo puede interferir con lo que está haciendo.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>Basado en el comportamiento del robot al 15/10/2026. Los textos de la columna Q son los que escribe el sistema, copiados tal cual.</footer>
+</div>
+
+</body>
+</html>

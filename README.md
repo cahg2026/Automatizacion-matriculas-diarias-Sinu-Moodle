@@ -6,6 +6,21 @@ Moodle vs. SINU de Power BI.
 
 - **Documento de referencia:** `Plan_Automatizacion_Moodle_SINU.docx` (v1.0, 19/08/2026)
 - **Python:** 3.11.9
+- **¿Primera vez?** Empiece por [`EMPEZAR-AQUI.md`](EMPEZAR-AQUI.md).
+
+## Documentos del proceso
+
+Todo en [`docs/`](docs/). Los `.html` se abren con doble clic, sin instalar nada.
+
+| Documento | Qué contiene |
+|---|---|
+| [`docs/flujo-y-tipificaciones.html`](docs/flujo-y-tipificaciones.html) | **Diagrama de flujo del día** (6 pasos), **árbol de tipificación** de cada fila y tabla de colores del Sheet con qué hacer en cada caso. Pensado para cualquier lector |
+| [`docs/estado-20261015.md`](docs/estado-20261015.md) | Cómo está la automatización al 15/10/2026: cómo corre, qué cambió desde el 26/09 y pendientes abiertos |
+| [`docs/documentacion-proceso.html`](docs/documentacion-proceso.html) | El proceso completo, con las decisiones del responsable del proceso |
+| [`docs/guia-instalacion.html`](docs/guia-instalacion.html) | Guía de instalación detallada, paso a paso |
+| [`docs/flujo-y-pendientes-20260926.md`](docs/flujo-y-pendientes-20260926.md) | Estado anterior (26/09): tiempos por paso y análisis de un día largo |
+| [`docs/arquitectura-y-mejoras.md`](docs/arquitectura-y-mejoras.md) | Arquitectura y mejoras propuestas |
+| [`docs/inventario-software.md`](docs/inventario-software.md) | Versiones de software medidas en el equipo |
 
 ## Estado por etapas
 
@@ -18,10 +33,12 @@ Moodle vs. SINU de Power BI.
 | 3 | Clasificación de casos en SINU — **modo lectura** | ✅ Verificada (01/09/2026): lectura real de la grilla Grupos |
 | 4 | Ejecución en ISEF07 (vincular / reciclar) | ✅ Verificada end-to-end (01/09/2026) — 3 cerrojos, `MODO_SIMULACION=false` |
 | 4b | Confirmación del check tras cada acción | ✅ Implementada (03/09/2026) — se relee la grilla, no se cree al diálogo |
-| 4c | Consulta automática de ISEF05 antes de procesar | ✅ Implementada (16/09/2026) — los grupos sin curso en Moodle no se intentan |
-| 4d | Consulta de PACF50 + anotación automática en el Sheet | ⏳ **Falta** — PACF50 sigue sin documentar |
-| 5 | Escritura de colores + validación en el Sheet | ⏳ |
-| 6 | Programación diaria (Task Scheduler) | ⏳ |
+| 4c | Consulta automática de ISEF05 antes de procesar | ⛔ Retirada (06/10/2026) — la reemplaza PACF50 |
+| 4d | Consulta de PACF50 por grupo (existe / tiene curso) | ✅ En producción — decide sola desde el 06/10/2026 |
+| 5 | Escritura de colores + columna Q en el Sheet | ✅ En producción (`marcar_gestion.py`) |
+| 6 | Programación diaria (Task Scheduler, 9:00 L-V) | ✅ En producción (`Flujo diario.bat`) |
+
+Estado detallado al 15/10/2026: [`docs/estado-20261015.md`](docs/estado-20261015.md).
 
 ## Instalación
 
@@ -1147,13 +1164,33 @@ urgencia de vinculación manual.
 > validación del check en Moodle y dejar registrada esta información en Google
 > Sheets.
 
-**Lo que está hecho:** el robot detecta el caso, reintenta el vincular
-`INTENTOS_HASTA_ESCALAR` veces, y lo anota en
+**Lo que está hecho:** el robot detecta el caso, y lo anota en
 `logs/escalado_isef05_pacf50.jsonl` con la cédula, el periodo, el motivo y las
 asignaturas concretas que quedaron sin check. Al final de la corrida el CLI los
 lista aparte de los fallos, porque el siguiente paso es distinto: consultar, no
 reintentar. Estos casos **no** hacen fallar la corrida (código 0): son un
 desenlace previsto que necesita a una persona.
+
+**Un solo intento por fila (regla del 25/09/2026).** Hasta esa fecha el vincular
+se reintentaba `INTENTOS_HASTA_ESCALAR = 3` veces, cada una con su ejecución en
+ISEF07 y su sondeo de 90 s. Ahora se actúa sobre cada `(cédula, materia)` **una
+sola vez** (`INTENTOS_POR_UNIDAD = 1`): si el check no aparece, la fila se escala
+en el acto. El sondeo de 90 s de ese único intento **se conserva** — no es un
+reintento, es la relectura que confirma la escritura que ya se hizo, y sale antes
+en cuanto el check aparece.
+
+**Cortocircuito por shortname (Regla B, misma fecha).** Al arrancar, el lote se
+indiza por shortname (`COD_MATERIA/NUM_GRUPO`). Cuando un shortname escala, entra
+en un conjunto en memoria de bloqueados y **todas las filas restantes de ese
+mismo grupo se cierran en lote**, sin abrir SINU, con el motivo
+`escalado-validacion-manual`. El check no aparece por causas del grupo, no del
+estudiante: `DTA32/55598` falló idéntico con sus cuatro estudiantes el 07, el 15
+y el 16/09/2026.
+
+El conjunto **no se persiste**, y es deliberado: lo que se sabe es «este grupo
+falló hoy», no «este grupo está roto». Crear el curso en MOODLE lo arregla, y un
+archivo en disco no se enteraría. Bloquear un grupo además **no escribe nada en
+SINU**, solo deja de escribir: si al validar resulta sano, basta volver a correr.
 
 **Lo que falta (4d):** PACF50 y la anotación automática en el Sheet. Los tres
 motivos que se registran:
@@ -1179,6 +1216,13 @@ estudiantes el 07, el 15 y el 16/09/2026. A ~360 s cada uno (3 intentos × 90 s
 de sondeo), son unos **24 minutos por corrida**, tres corridas seguidas, y tres
 clics de «Vincular» por estudiante y día contra un grupo donde vincular es
 imposible.
+
+> **Retirado el 06/10/2026.** Por indicación del dueño del proceso, el flujo ya
+> no consulta ISEF05: si una materia no tiene check en Moodle en PACF50, no va a
+> existir en la 05, así que la 05 no cambia ninguna decisión. Ahora la
+> verificación de grupos se hace solo en **PACF50**
+> ([`verificacion_grupo.py`](src/moodle_sinu/verificacion_grupo.py)) y se
+> desactiva con `--sin-consultar-pacf50`. Lo que sigue queda como historia.
 
 ISEF05 («Integración Masiva con MOODLE») lo contesta en unos segundos. Su
 rejilla *Grupos* se filtra por `cod_materia` y `num_grupo` — los mismos nombres
@@ -1209,7 +1253,7 @@ Tres decisiones que no son obvias:
   Moodle**. Confundirlos manda al operador a verificar en ISEF05 algo que ISEF05
   ya contestó.
 
-Se desactiva con `--sin-consultar-isef05`.
+Se desactivaba con `--sin-consultar-isef05` (opción retirada el 06/10/2026).
 
 > ⚠️ **ISEF05 no es una pantalla inocua.** Lleva un desplegable `Actividad` y una
 > casilla **«Borra la actividad seleccionada en MOODLE?»**: desde ahí se pueden

@@ -1,0 +1,489 @@
+<title>Automatización Moodle–SINU en su computador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: una columna de lectura; cada paso lleva su numeral en un margen propio y un checklist que el lector va marcando. */
+:root {
+  --papel: #f5f7f5;
+  --hoja: #ffffff;
+  --tinta: #1a2320;
+  --gris: #56625d;
+  --linea: #d8dfdb;
+  --acento: #0b6b57;      /* el verde de "vinculada y confirmada" */
+  --acento-suave: #e3f1ec;
+  --aviso: #9a5600;
+  --aviso-suave: #fbf0e0;
+  --rojo: #b3261e;
+  --fucsia: #b0247a;
+  --naranja: #c2610c;
+  --codigo: #eaefec;
+
+  --f-titulo: "Archivo", "Arial Narrow", "Segoe UI", sans-serif;
+  --f-texto: "Atkinson Hyperlegible", "Segoe UI", Verdana, sans-serif;
+  --f-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papel: #121816; --hoja: #19201d; --tinta: #e4ebe7; --gris: #9aa7a1;
+    --linea: #2c3532; --acento: #4fc3a1; --acento-suave: #173029;
+    --aviso: #f0b45c; --aviso-suave: #2e2416; --rojo: #f08a82;
+    --fucsia: #ec7cc0; --naranja: #f0a060; --codigo: #1f2724;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papel: #121816; --hoja: #19201d; --tinta: #e4ebe7; --gris: #9aa7a1;
+  --linea: #2c3532; --acento: #4fc3a1; --acento-suave: #173029;
+  --aviso: #f0b45c; --aviso-suave: #2e2416; --rojo: #f08a82;
+  --fucsia: #ec7cc0; --naranja: #f0a060; --codigo: #1f2724;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--papel);
+  color: var(--tinta);
+  font: 17px/1.6 var(--f-texto);
+  padding-inline: 20px;
+  padding-block: 0 64px;
+}
+.hoja { max-width: 50rem; margin-inline: auto; }
+
+h1, h2, h3 { font-family: var(--f-titulo); font-stretch: 112%; text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-weight: 800; font-size: clamp(1.9rem, 4.6vw, 2.75rem); letter-spacing: -0.01em; }
+h2 { font-weight: 800; font-size: 1.55rem; }
+h3 { font-weight: 600; font-size: 1.1rem; }
+p { margin: 0; max-width: 65ch; }
+a { color: var(--acento); }
+strong { font-weight: 700; }
+
+.etiqueta {
+  font-family: var(--f-titulo); font-weight: 600; font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.09em; color: var(--acento);
+}
+
+/* --- Portada --- */
+header.portada { padding-block: 48px 28px; display: grid; gap: 16px; border-bottom: 2px solid var(--tinta); }
+.portada .bajada { font-size: 1.15rem; color: var(--gris); }
+.datos { display: flex; flex-wrap: wrap; gap: 8px 28px; font-size: 0.95rem; margin-top: 6px; }
+.datos div { display: grid; }
+.datos dt { font-size: 0.78rem; color: var(--gris); text-transform: uppercase; letter-spacing: 0.06em; }
+.datos dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+section { padding-block: 40px 0; display: grid; gap: 16px; }
+
+/* --- Indice de pasos --- */
+ol.indice { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; counter-reset: paso; }
+ol.indice li { counter-increment: paso; display: grid; grid-template-columns: 2.2rem 1fr auto; gap: 10px; align-items: baseline; padding-block: 8px; border-bottom: 1px solid var(--linea); }
+ol.indice li::before { content: counter(paso); font-family: var(--f-titulo); font-weight: 800; font-size: 1.2rem; color: var(--acento); }
+ol.indice a { color: var(--tinta); text-decoration: none; font-weight: 700; }
+ol.indice a:hover, ol.indice a:focus-visible { text-decoration: underline; }
+ol.indice .min { color: var(--gris); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+
+/* --- Pasos --- */
+article.paso {
+  display: grid; grid-template-columns: 4.2rem 1fr; gap: 0 20px;
+  padding-block: 36px 8px; border-top: 1px solid var(--linea);
+}
+article.paso:first-of-type { border-top: 0; }
+.numeral {
+  font-family: var(--f-titulo); font-weight: 800; font-stretch: 112%;
+  font-size: 3.4rem; line-height: 0.9; color: var(--acento);
+  font-variant-numeric: tabular-nums;
+}
+.cuerpo { display: grid; gap: 14px; min-width: 0; }
+.cabeza { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.cabeza .min { color: var(--gris); font-size: 0.92rem; }
+
+ul, ol.sub { margin: 0; padding-left: 1.3rem; display: grid; gap: 6px; max-width: 65ch; }
+
+/* Comandos */
+.comando { display: grid; gap: 6px; }
+.comando .para { font-size: 0.9rem; color: var(--gris); }
+.linea-cmd {
+  display: flex; align-items: stretch; background: var(--codigo);
+  border: 1px solid var(--linea); border-radius: 6px; overflow: hidden;
+}
+.linea-cmd code {
+  flex: 1; font: 0.9rem/1.5 var(--f-mono); padding: 10px 12px;
+  overflow-x: auto; white-space: pre; color: var(--tinta);
+}
+.linea-cmd button {
+  font: 600 0.8rem var(--f-texto); border: 0; border-left: 1px solid var(--linea);
+  background: transparent; color: var(--acento); padding: 0 14px; cursor: pointer; white-space: nowrap;
+}
+.linea-cmd button:hover { background: var(--acento-suave); }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+code.en-linea { font: 0.88em var(--f-mono); background: var(--codigo); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+
+/* Salida esperada de la consola */
+.salida {
+  font: 0.85rem/1.55 var(--f-mono); color: var(--gris);
+  border-left: 3px solid var(--acento); padding: 4px 0 4px 12px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.salida .ok { color: var(--acento); font-weight: 600; }
+
+/* Notas */
+.nota { padding: 12px 16px; border-radius: 6px; background: var(--acento-suave); display: grid; gap: 6px; }
+.nota.cuidado { background: var(--aviso-suave); }
+.nota.cuidado .etiqueta { color: var(--aviso); }
+
+/* Hecho */
+label.hecho { display: inline-flex; gap: 10px; align-items: center; font-weight: 700; cursor: pointer; justify-self: start; padding: 6px 0; }
+label.hecho input { width: 20px; height: 20px; accent-color: var(--acento); }
+article.paso.listo .numeral { color: var(--gris); }
+article.paso.listo .numeral::after { content: " ✓"; font-size: 1.6rem; color: var(--acento); }
+
+/* Tablas */
+.tabla { overflow-x: auto; border: 1px solid var(--linea); border-radius: 6px; background: var(--hoja); }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--linea); }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--f-titulo); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gris); }
+td:first-child { font-weight: 700; min-width: 11rem; }
+
+/* Mañana del robot */
+ol.manana { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+ol.manana li { display: grid; grid-template-columns: 5.4rem 1fr; gap: 14px; padding-block: 12px; border-bottom: 1px solid var(--linea); }
+ol.manana .paso-n { font: 600 0.82rem var(--f-mono); color: var(--acento); padding-top: 3px; }
+ol.manana li > div { display: grid; gap: 4px; }
+
+/* Colores del Sheet */
+.colores { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 10px; }
+.color { display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: start; padding: 10px 12px; background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; font-size: 0.93rem; }
+.color i { width: 14px; height: 14px; border-radius: 3px; margin-top: 5px; }
+
+/* Cambios */
+dl.cambios { margin: 0; display: grid; gap: 0; }
+dl.cambios div { display: grid; grid-template-columns: 6.5rem 1fr; gap: 14px; padding-block: 10px; border-bottom: 1px solid var(--linea); }
+dl.cambios dt { font: 600 0.85rem var(--f-mono); color: var(--gris); font-variant-numeric: tabular-nums; padding-top: 2px; }
+dl.cambios dd { margin: 0; }
+
+footer { margin-top: 48px; padding-top: 16px; border-top: 2px solid var(--tinta); color: var(--gris); font-size: 0.9rem; }
+
+@media (max-width: 560px) {
+  article.paso { grid-template-columns: 1fr; gap: 8px; }
+  .numeral { font-size: 2.6rem; }
+  ol.manana li, dl.cambios div { grid-template-columns: 1fr; gap: 2px; }
+  td:first-child { min-width: 8rem; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  article.paso .numeral { transition: color .2s; }
+}
+</style>
+
+<div class="hoja">
+
+<header class="portada">
+  <span class="etiqueta">Guía de instalación · Moodle vs SINU</span>
+  <h1>Cómo dejar la automatización funcionando en su computador</h1>
+  <p class="bajada">Seis pasos; no hace falta saber programar. Al final, su computador descarga el reporte de Power BI, lo sube a Drive y vincula las matrículas en SINU todos los días hábiles a las 9:00, y le avisa por Google Calendar cómo terminó.</p>
+  <dl class="datos">
+    <div><dt>Tiempo</dt><dd>30 a 45 minutos</dd></div>
+    <div><dt>Equipo</dt><dd>Windows 10 u 11</dd></div>
+    <div><dt>Navegador</dt><dd>Microsoft Edge</dd></div>
+    <div><dt>Versión de la guía</dt><dd>06/10/2026</dd></div>
+  </dl>
+</header>
+
+<section aria-labelledby="t-indice">
+  <h2 id="t-indice">Los seis pasos</h2>
+  <ol class="indice">
+    <li><a href="#paso-1">Reúna cuentas y permisos</a><span class="min">antes de empezar</span></li>
+    <li><a href="#paso-2">Instale Python y copie la carpeta</a><span class="min">10 min</span></li>
+    <li><a href="#paso-3">Prepare el entorno del robot</a><span class="min">5 min</span></li>
+    <li><a href="#paso-4">Escriba su configuración</a><span class="min">5 min</span></li>
+    <li><a href="#paso-5">Inicie sesión una sola vez</a><span class="min">10 min</span></li>
+    <li><a href="#paso-6">Pruebe y programe las 9:00</a><span class="min">5 min</span></li>
+  </ol>
+  <div class="nota">
+    <span class="etiqueta">Cómo escribir los comandos</span>
+    <p>Varios pasos piden escribir una línea en la consola. Abra la carpeta del proyecto en el Explorador de archivos, haga clic en la barra de dirección, escriba <code class="en-linea">powershell</code> y pulse Enter. Se abre una ventana azul ya ubicada en la carpeta. Copie cada línea con el botón <strong>Copiar</strong>, péguela con clic derecho y pulse Enter.</p>
+  </div>
+</section>
+
+<section aria-label="Pasos de instalación">
+
+<article class="paso" id="paso-1">
+  <div class="numeral" aria-hidden="true">1</div>
+  <div class="cuerpo">
+    <div class="cabeza"><h2>Reúna cuentas y permisos</h2><span class="min">antes de empezar</span></div>
+    <p>El robot entra a tres sistemas con estas cuentas. Consígalas antes de seguir:</p>
+    <div class="tabla"><table>
+      <thead><tr><th>Sistema</th><th>Qué cuenta</th><th>Qué permiso necesita</th></tr></thead>
+      <tbody>
+        <tr><td>Power BI</td><td>La cuenta compartida del área. Ya viene escrita en la configuración; la contraseña se la da el responsable del proceso.</td><td>Ver el informe <em>ValidacionMoodle</em>, página MOODLE-VS-SINU-EST.</td></tr>
+        <tr><td>SINU</td><td><strong>Su propia cuenta.</strong> No use la de otra persona: cada vinculación queda registrada a nombre de quien la hace.</td><td>Escritura en <strong>ISEF07</strong> y lectura en <strong>PACF50</strong>. Ya no hace falta ISEF05.</td></tr>
+        <tr><td>Google</td><td>Su cuenta institucional de Google.</td><td>Editar la carpeta de Drive <strong>REPORTES 2026</strong>. Los avisos llegan a su Google Calendar.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Además, el computador debe tener Microsoft Edge (viene con Windows) y quedarse encendido, con su sesión de Windows abierta, en el horario del proceso.</p>
+    <label class="hecho"><input type="checkbox" id="hecho-1" data-paso="1"> Tengo las tres cuentas</label>
+  </div>
+</article>
+
+<article class="paso" id="paso-2">
+  <div class="numeral" aria-hidden="true">2</div>
+  <div class="cuerpo">
+    <div class="cabeza"><h2>Instale Python y copie la carpeta</h2><span class="min">10 min</span></div>
+    <ol class="sub">
+      <li>Descargue <strong>Python 3.11.9</strong> desde <a href="https://www.python.org/downloads/release/python-3119/">python.org</a>, opción <em>Windows installer (64-bit)</em>. No use el Python de Microsoft Store: no funciona con el robot.</li>
+      <li>Al instalar, marque la casilla <strong>Add python.exe to PATH</strong> antes de pulsar <em>Install Now</em>.</li>
+      <li>Pida al responsable la carpeta del proyecto (ZIP) y descomprímala en <code class="en-linea">C:\moodle-sinu-automation</code>.</li>
+    </ol>
+    <div class="nota cuidado">
+      <span class="etiqueta">Fuera de OneDrive</span>
+      <p>No ponga la carpeta en el Escritorio ni en Documentos si están sincronizados con OneDrive. La sincronización bloquea archivos mientras el robot trabaja, y si la carpeta se mueve después, el entorno del paso 3 deja de funcionar y hay que rehacerlo.</p>
+    </div>
+    <div class="comando">
+      <span class="para">Compruebe que Python quedó instalado:</span>
+      <div class="linea-cmd"><code>py -3.11 --version</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="salida">Python 3.11.9</div>
+    <label class="hecho"><input type="checkbox" id="hecho-2" data-paso="2"> Python responde y la carpeta está en C:\</label>
+  </div>
+</article>
+
+<article class="paso" id="paso-3">
+  <div class="numeral" aria-hidden="true">3</div>
+  <div class="cuerpo">
+    <div class="cabeza"><h2>Prepare el entorno del robot</h2><span class="min">5 min</span></div>
+    <p>Abra PowerShell en <code class="en-linea">C:\moodle-sinu-automation</code> y escriba estas tres líneas, una por una. La segunda descarga lo que el robot necesita y tarda un par de minutos.</p>
+    <div class="comando">
+      <span class="para">Crea el entorno:</span>
+      <div class="linea-cmd"><code>py -3.11 -m venv .venv</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="comando">
+      <span class="para">Instala las dependencias:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe -m pip install -r requirements.txt</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="comando">
+      <span class="para">Comprueba que todo quedó bien:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe -m pytest -q</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="salida">758 passed in 3.1s</div>
+    <p>El número exacto puede variar. Lo importante es que diga <strong>passed</strong> y que no aparezca <strong>failed</strong>. No hace falta instalar navegadores aparte: el robot usa el Edge del computador.</p>
+    <label class="hecho"><input type="checkbox" id="hecho-3" data-paso="3"> Las pruebas dicen passed</label>
+  </div>
+</article>
+
+<article class="paso" id="paso-4">
+  <div class="numeral" aria-hidden="true">4</div>
+  <div class="cuerpo">
+    <div class="cabeza"><h2>Escriba su configuración</h2><span class="min">5 min</span></div>
+    <div class="comando">
+      <span class="para">Ejecute el asistente. La primera vez crea el archivo <code class="en-linea">config\.env</code> y le dice qué datos faltan:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\primera_vez.py</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="comando">
+      <span class="para">Ábralo en el Bloc de notas:</span>
+      <div class="linea-cmd"><code>notepad config\.env</code><button type="button">Copiar</button></div>
+    </div>
+    <p>Busque cada línea y escriba el valor después del signo <code class="en-linea">=</code>, sin comillas ni espacios:</p>
+    <div class="tabla"><table>
+      <thead><tr><th>Línea</th><th>Qué escribir</th></tr></thead>
+      <tbody>
+        <tr><td><code class="en-linea">POWERBI_PASSWORD=</code></td><td>La contraseña de la cuenta compartida de Power BI.</td></tr>
+        <tr><td><code class="en-linea">SINU_USUARIO=</code></td><td>Su usuario de SINU.</td></tr>
+        <tr><td><code class="en-linea">SINU_PASSWORD=</code></td><td>Su contraseña de SINU.</td></tr>
+        <tr><td><code class="en-linea">POWERBI_PERFIL_NAVEGADOR=</code></td><td><code class="en-linea">C:\Users\SU_USUARIO\.playwright-perfil-msedge</code>, cambiando SU_USUARIO por su usuario de Windows. Es la carpeta donde Edge guarda las sesiones del robot, separada de su Edge personal.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="comando">
+      <span class="para">Si no sabe su usuario de Windows, esta línea lo muestra:</span>
+      <div class="linea-cmd"><code>$env:USERNAME</code><button type="button">Copiar</button></div>
+    </div>
+    <p>Compruebe también que estas líneas digan exactamente esto. Ya vienen así; no las cambie:</p>
+    <div class="salida">NAVEGADOR_CANAL=msedge
+NAVEGADOR_PERFIL=proyecto
+MODO_SIMULACION=true</div>
+    <p><code class="en-linea">MODO_SIMULACION=true</code> es correcto: el flujo diario lo abre solo mientras trabaja y lo vuelve a cerrar al terminar, para que nadie escriba en SINU por accidente.</p>
+    <p>Opcional: en <code class="en-linea">NOTIFICAR_INVITADOS=</code> puede poner correos separados por comas para que otras personas también reciban el aviso en su calendario.</p>
+    <p>Guarde con Ctrl+G y cierre el Bloc de notas.</p>
+    <label class="hecho"><input type="checkbox" id="hecho-4" data-paso="4"> config\.env está completo</label>
+  </div>
+</article>
+
+<article class="paso" id="paso-5">
+  <div class="numeral" aria-hidden="true">5</div>
+  <div class="cuerpo">
+    <div class="cabeza"><h2>Inicie sesión una sola vez</h2><span class="min">10 min</span></div>
+    <p>El robot usa un Edge propio que recuerda las sesiones. Hay que entrar a mano una vez; después entra solo.</p>
+    <div class="comando">
+      <span class="para">Primero Google. Se abre Edge en Drive y tiene 5 minutos para iniciar sesión con su cuenta institucional. Cuando vea sus archivos, cierre la ventana:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\probar_perfil.py --iniciar-sesion</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="comando">
+      <span class="para">Después el resto. El asistente abre Power BI, SINU, Drive y Calendar uno tras otro. En cada uno inicie sesión si se lo pide y cierre la pestaña para pasar al siguiente:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\primera_vez.py</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="salida"><span class="ok">[ok]</span> Python 3.11.9
+<span class="ok">[ok]</span> Navegador instalado: Edge.
+<span class="ok">[ok]</span> Las claves imprescindibles estan rellenas.
+<span class="ok">[ok]</span> La carpeta del perfil existe.
+<span class="ok">[ok]</span> Power BI: sesion viva.
+<span class="ok">[ok]</span> SINU: sesion viva.</div>
+    <div class="nota cuidado">
+      <span class="etiqueta">Si el asistente menciona el antivirus</span>
+      <p>Si Kaspersky inspecciona las conexiones seguras, el asistente lo detecta e imprime un comando para exportar su certificado a <code class="en-linea">config\ca_kaspersky.pem</code>. Cópielo tal cual. Si no tiene permisos para hacerlo, pida ayuda a soporte de TI.</p>
+    </div>
+    <label class="hecho"><input type="checkbox" id="hecho-5" data-paso="5"> Todas las sesiones dicen [ok]</label>
+  </div>
+</article>
+
+<article class="paso" id="paso-6">
+  <div class="numeral" aria-hidden="true">6</div>
+  <div class="cuerpo">
+    <div class="cabeza"><h2>Pruebe y programe las 9:00</h2><span class="min">5 min</span></div>
+    <p>Estas tres pruebas solo leen; no suben nada a Drive ni tocan SINU.</p>
+    <div class="comando">
+      <span class="para">El perfil y la sesión de Google (10 segundos):</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\probar_perfil.py</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="salida"><span class="ok">[ok]</span> Drive respondio sin pedir login: la sesion sirve.</div>
+    <div class="comando">
+      <span class="para">La fecha del tablero de Power BI:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\verificar_actualizacion.py</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="salida">-&gt; ACTUALIZADO HOY. El flujo puede continuar con la descarga.</div>
+    <p>Si dice <em>NO ACTUALIZADO HOY</em>, la prueba igual salió bien: significa que el área de datos aún no refrescó el tablero.</p>
+    <div class="comando">
+      <span class="para">La descarga del reporte (menos de un minuto):</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\exportar_reporte.py</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="salida">Tarjeta y .xlsx coinciden: 45 registros.</div>
+
+    <h3>Programe la tarea diaria</h3>
+    <div class="nota cuidado">
+      <span class="etiqueta">Desde aquí el robot escribe en SINU</span>
+      <p>Una vez programado, a partir del siguiente día hábil el robot vincula matrículas de verdad con su cuenta. Solo una persona por día debe tenerlo encendido: si dos computadores lo corren el mismo día, procesan el mismo reporte dos veces.</p>
+    </div>
+    <div class="comando">
+      <span class="para">Crea la tarea de lunes a viernes a las 9:00:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\programar_9am.py</code><button type="button">Copiar</button></div>
+    </div>
+    <div class="comando">
+      <span class="para">Crea el reintento de las 9:30, que solo actúa si a las 9:00 el tablero aún no estaba actualizado:</span>
+      <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\programar_9am.py --reintento-bi</code><button type="button">Copiar</button></div>
+    </div>
+    <p>Para encender, apagar o correrlo solo mañana sin volver a la consola, haga doble clic en <strong>Flujo diario.bat</strong>, dentro de la carpeta del proyecto. Tiene tres botones: <em>Todos los días (L-V)</em>, <em>Solo mañana</em> y <em>Apagar</em>.</p>
+    <p>Por último, en Windows vaya a <strong>Configuración › Sistema › Inicio/apagado y suspensión</strong> y ponga la suspensión en <strong>Nunca</strong> cuando esté enchufado. La tarea solo corre con su sesión de Windows abierta; si el computador estaba apagado a las 9:00, arranca en cuanto usted inicia sesión.</p>
+    <label class="hecho"><input type="checkbox" id="hecho-6" data-paso="6"> La tarea quedó programada</label>
+  </div>
+</article>
+
+</section>
+
+<section aria-labelledby="t-manana">
+  <span class="etiqueta">Después de instalar</span>
+  <h2 id="t-manana">Qué hace el robot cada mañana</h2>
+  <p>Cada paso deja su rastro en la bitácora del día (<code class="en-linea">logs\dia_completo_AAAAMMDD_HHMMSS.log</code>). Con un reporte de 45 filas tarda unos 30 minutos; con 300 filas puede tardar varias horas.</p>
+  <ol class="manana">
+    <li><span class="paso-n">PASO 0/6</span><div><strong>Revisa el navegador y la sesión de Google.</strong><span>Si la sesión de Google se cayó, se detiene antes de tocar nada.</span></div></li>
+    <li><span class="paso-n">PASO 1/6</span><div><strong>Comprueba que el tablero se actualizó hoy.</strong><span>Si el tablero es de ayer, no descarga nada, le avisa y lo vuelve a intentar a las 9:30. Procesar datos viejos ensuciaría vinculaciones que ya estaban bien.</span></div></li>
+    <li><span class="paso-n">PASO 2/6</span><div><strong>Descarga el reporte de Power BI.</strong><span>Toma el archivo directamente de Power BI y comprueba que sus filas coinciden con la tarjeta NO MATRICULADO. Si falla, lo reintenta hasta 5 veces.</span></div></li>
+    <li><span class="paso-n">PASO 3/6</span><div><strong>Limpia, ordena y sube el Sheet a Drive.</strong><span>Queda en <code class="en-linea">REPORTES 2026 › OCTUBRE › REPORTE 06/10/2026 #45</code>: la fecha del reporte y el número de no matriculados.</span></div></li>
+    <li><span class="paso-n">PASO 4/6</span><div><strong>Vincula las matrículas en ISEF07, período por período.</strong><span>Antes, verifica en PACF50 los grupos con muchas filas y descarta los que no existen o no tienen curso en Moodle. Solo se salta lo que ya quedó en verde ese mismo día: lo que reaparece en el reporte se procesa otra vez.</span></div></li>
+    <li><span class="paso-n">PASO 5/6</span><div><strong>Marca el resultado en el Sheet y lo vuelve a subir.</strong><span>Cada fila queda con su color (ver abajo).</span></div></li>
+    <li><span class="paso-n">PASO 6/6</span><div><strong>Cierra el día y le avisa.</strong><span>Crea un evento en su Google Calendar: <em>ÉXITO</em>, <em>Tablero Power BI no actualizado</em> o <em>FALLO</em>, con el resumen. Copia de cada aviso en <code class="en-linea">logs\avisos\</code>.</span></div></li>
+  </ol>
+
+  <h3>Qué significa cada color en el Sheet</h3>
+  <div class="colores">
+    <div class="color"><i style="background:var(--acento)"></i><span><strong>Verde.</strong> Vinculada y confirmada al releer SINU.</span></div>
+    <div class="color"><i style="background:var(--rojo)"></i><span><strong>Rojo.</strong> Hubo una incidencia; el motivo queda anotado. Las de "check no confirmado" se validan a mano en PACF50.</span></div>
+    <div class="color"><i style="background:var(--fucsia)"></i><span><strong>Fucsia.</strong> El grupo no existe en SINU. No se intenta.</span></div>
+    <div class="color"><i style="background:var(--naranja)"></i><span><strong>Naranja.</strong> Le falta un campo obligatorio en el reporte. No se puede procesar.</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="t-reglas">
+  <h2 id="t-reglas">Tres reglas mientras corre</h2>
+  <ul>
+    <li><strong>No use SINU con su cuenta</strong> mientras el robot trabaja. Comparten la sesión y uno saca al otro.</li>
+    <li><strong>No apague ni suspenda el computador.</strong> El 02/10/2026 un apagado a mitad de la corrida dejó a un estudiante a medio desvincular.</li>
+    <li><strong>Una sola persona por día</strong> en modo real.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="t-fallas">
+  <h2 id="t-fallas">Si algo sale mal</h2>
+  <p>El aviso de Calendar dice en qué paso se detuvo. Busque ese síntoma aquí. Los comandos se escriben en PowerShell, dentro de la carpeta del proyecto.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Lo que ve</th><th>Qué hacer</th></tr></thead>
+    <tbody>
+      <tr><td>Aviso "Tablero Power BI no actualizado"</td><td>Nada en el robot. A las 9:30 lo reintenta solo. Si el área de datos lo refresca más tarde, relance el día a mano:<br><code class="en-linea">.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad</code></td></tr>
+      <tr><td>Falla en el PASO 0: la sesión de Google no sirve</td><td>Vuelva a iniciar sesión:<br><code class="en-linea">.venv\Scripts\python.exe scripts\probar_perfil.py --iniciar-sesion</code></td></tr>
+      <tr><td>PASO 2: "no tiene ningún visual de tabla"</td><td>Power BI cambió cómo identifica la tabla (pasó el 05/10/2026). El error muestra entre paréntesis el tipo de cada elemento. Envíe ese mensaje al responsable técnico para que lo agregue.</td></tr>
+      <tr><td>PASO 5: "La subida falló" al abrir Drive</td><td>Es un tropiezo de la página. El archivo marcado sí quedó en su computador; la bitácora indica cuál es. Súbalo de nuevo:<br><code class="en-linea">.venv\Scripts\python.exe scripts\marcar_gestion.py "RUTA_DEL_ARCHIVO" --subir --visible --reemplazar</code></td></tr>
+      <tr><td>Aviso con "CICLOS SIN CERRAR" o "DESVINCULADOS"</td><td>Uno o más estudiantes quedaron a mitad del reciclado y pueden estar sin su curso. Repárelos con la URL del Sheet del día:<br><code class="en-linea">.venv\Scripts\python.exe scripts\reparar_desvinculados.py --sheet-url "URL_DEL_SHEET" --ejecutar-de-verdad</code></td></tr>
+      <tr><td>El computador se apagó a mitad del día</td><td>Relance el día. No repite lo que ya quedó en verde hoy:<br><code class="en-linea">.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad</code></td></tr>
+      <tr><td>Páginas en blanco por Escritorio remoto</td><td>En <code class="en-linea">config\.env</code> cambie <code class="en-linea">NAVEGADOR_COMPAT_RDP=false</code> a <code class="en-linea">true</code>.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="nota">
+    <span class="etiqueta">Códigos de período en PowerShell</span>
+    <p>Si algún comando lleva un período, escríbalo siempre entre comillas, por ejemplo <code class="en-linea">--periodos "2026D"</code>. Sin comillas, PowerShell lee 2026D como el número 2026 y el período se salta sin avisar.</p>
+  </div>
+</section>
+
+<section aria-labelledby="t-cambios">
+  <h2 id="t-cambios">Lo que esta versión ya incluye</h2>
+  <p>Ajustes hechos sobre la marcha. No tiene que hacer nada con ellos; están aquí para que sepa por qué el robot se comporta así.</p>
+  <dl class="cambios">
+    <div><dt>24/09/2026</dt><dd>Usa <strong>Microsoft Edge</strong> con un perfil propio. Chrome se caía al descargar de Power BI y no deja automatizar el perfil personal.</dd></div>
+    <div><dt>28/09/2026</dt><dd>Si el tablero de Power BI no se actualizó hoy, el día se <strong>pausa</strong> y se reintenta a las 9:30, en vez de procesar datos viejos.</dd></div>
+    <div><dt>05/10/2026</dt><dd>Reconoce la tabla del informe con el nombre nuevo que le dio Power BI ("Objeto visual de tabla").</dd></div>
+    <div><dt>06/10/2026</dt><dd>Toma el reporte <strong>directamente de Power BI</strong>, sin pasar por las descargas de Edge, que se caían 6 de cada 9 veces.</dd></div>
+    <div><dt>06/10/2026</dt><dd><strong>Cada día se procesa desde cero</strong>: solo se salta lo que quedó en verde ese mismo día.</dd></div>
+    <div><dt>06/10/2026</dt><dd>Ya <strong>no consulta ISEF05</strong>; la verificación de grupos se hace solo en PACF50. Ahorra unos 11 minutos diarios.</dd></div>
+  </dl>
+</section>
+
+<footer>
+  <p>Archivos útiles: resultados en Drive, carpeta REPORTES 2026; bitácoras en <code class="en-linea">logs\</code>; reportes descargados en <code class="en-linea">data\raw\</code> y procesados en <code class="en-linea">data\processed\</code>. Los grupos que el responsable revisó a mano y no existen en SINU se listan en <code class="en-linea">config\grupos_no_existen.txt</code>.</p>
+</footer>
+
+</div>
+
+<script>
+(() => {
+  // Copiar comandos. Si el portapapeles no esta permitido, se selecciona el texto.
+  document.querySelectorAll('.linea-cmd button').forEach((boton) => {
+    boton.addEventListener('click', async () => {
+      const codigo = boton.previousElementSibling;
+      const texto = codigo.textContent;
+      try {
+        await navigator.clipboard.writeText(texto);
+        boton.textContent = 'Copiado';
+      } catch (e) {
+        const rango = document.createRange();
+        rango.selectNodeContents(codigo);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(rango);
+        boton.textContent = 'Ctrl+C';
+      }
+      setTimeout(() => { boton.textContent = 'Copiar'; }, 1800);
+    });
+  });
+
+  // Marcar pasos hechos; se recuerda en este navegador.
+  const CLAVE = 'guia-moodle-sinu-pasos';
+  let hechos = {};
+  try { hechos = JSON.parse(localStorage.getItem(CLAVE) || '{}'); } catch (e) { hechos = {}; }
+  document.querySelectorAll('input[data-paso]').forEach((casilla) => {
+    const paso = casilla.dataset.paso;
+    const articulo = casilla.closest('article.paso');
+    casilla.checked = !!hechos[paso];
+    articulo.classList.toggle('listo', casilla.checked);
+    casilla.addEventListener('change', () => {
+      hechos[paso] = casilla.checked;
+      articulo.classList.toggle('listo', casilla.checked);
+      try { localStorage.setItem(CLAVE, JSON.stringify(hechos)); } catch (e) {}
+    });
+  });
+})();
+</script>

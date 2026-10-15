@@ -1,0 +1,518 @@
+<title>Documentación Moodle vs SINU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: documento de referencia en una columna ancha; indice al inicio, secciones numeradas porque se citan ("ver 4.3"), tablas como pieza principal. */
+:root {
+  --papel: #f5f7f5;
+  --hoja: #ffffff;
+  --tinta: #1a2320;
+  --gris: #56625d;
+  --linea: #d8dfdb;
+  --acento: #0b6b57;
+  --acento-suave: #e3f1ec;
+  --aviso: #9a5600;
+  --aviso-suave: #fbf0e0;
+  --codigo: #eaefec;
+  /* colores reales que el robot pinta en el Sheet */
+  --s-verde: #90ee90; --s-rojo: #ffc7ce; --s-fucsia: #ff00ff; --s-naranja: #ffa500;
+  --s-amarillo: #ffff00; --s-azul: #add8e6; --s-morado: #9966cc;
+
+  --f-titulo: "Archivo", "Arial Narrow", "Segoe UI", sans-serif;
+  --f-texto: "Atkinson Hyperlegible", "Segoe UI", Verdana, sans-serif;
+  --f-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papel: #121816; --hoja: #19201d; --tinta: #e4ebe7; --gris: #9aa7a1;
+    --linea: #2c3532; --acento: #4fc3a1; --acento-suave: #173029;
+    --aviso: #f0b45c; --aviso-suave: #2e2416; --codigo: #1f2724;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papel: #121816; --hoja: #19201d; --tinta: #e4ebe7; --gris: #9aa7a1;
+  --linea: #2c3532; --acento: #4fc3a1; --acento-suave: #173029;
+  --aviso: #f0b45c; --aviso-suave: #2e2416; --codigo: #1f2724;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--papel); color: var(--tinta); font: 16.5px/1.6 var(--f-texto); padding-inline: 20px; padding-block: 0 64px; }
+.hoja { max-width: 60rem; margin-inline: auto; }
+h1, h2, h3 { font-family: var(--f-titulo); font-stretch: 112%; text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-weight: 800; font-size: clamp(1.9rem, 4.4vw, 2.7rem); letter-spacing: -0.01em; }
+h2 { font-weight: 800; font-size: 1.6rem; }
+h3 { font-weight: 600; font-size: 1.12rem; margin-top: 8px; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--acento); }
+.etiqueta { font-family: var(--f-titulo); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--acento); }
+code { font: 0.87em var(--f-mono); background: var(--codigo); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+
+header.portada { padding-block: 48px 26px; display: grid; gap: 14px; border-bottom: 2px solid var(--tinta); }
+.bajada { font-size: 1.12rem; color: var(--gris); }
+.ficha { display: flex; flex-wrap: wrap; gap: 8px 30px; margin: 4px 0 0; }
+.ficha div { display: grid; }
+.ficha dt { font-size: 0.76rem; color: var(--gris); text-transform: uppercase; letter-spacing: 0.06em; }
+.ficha dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+nav.indice { padding-block: 26px; border-bottom: 1px solid var(--linea); }
+nav.indice ol { margin: 10px 0 0; padding: 0; list-style: none; columns: 2 16rem; column-gap: 32px; }
+nav.indice li { break-inside: avoid; padding-block: 4px; display: grid; grid-template-columns: 2rem 1fr; }
+nav.indice li span { font: 600 0.9rem var(--f-mono); color: var(--acento); }
+nav.indice a { color: var(--tinta); text-decoration: none; }
+nav.indice a:hover, nav.indice a:focus-visible { text-decoration: underline; }
+
+section.cap { padding-block: 44px 0; display: grid; gap: 16px; }
+.num-cap { font: 600 0.9rem var(--f-mono); color: var(--acento); }
+.cabeza-cap { display: grid; gap: 4px; border-top: 2px solid var(--tinta); padding-top: 14px; }
+
+/* Cifras */
+.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)); gap: 12px; }
+.cifra { background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; padding: 14px 16px; display: grid; gap: 2px; align-content: start; }
+.cifra b { font: 800 1.7rem/1.1 var(--f-titulo); font-stretch: 112%; font-variant-numeric: tabular-nums; }
+.cifra span { font-size: 0.9rem; color: var(--gris); }
+
+/* Tablas */
+.tabla { overflow-x: auto; border: 1px solid var(--linea); border-radius: 6px; background: var(--hoja); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--linea); }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--f-titulo); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gris); white-space: nowrap; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.mono { font-family: var(--f-mono); font-size: 0.84rem; white-space: nowrap; }
+td.fuerte { font-weight: 700; }
+
+/* Muestra de color del Sheet: es el color real, igual en ambos temas */
+.muestra { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 8px; border: 1px solid rgba(0,0,0,.25); }
+.etq-sheet { font: 600 0.8rem var(--f-mono); }
+
+/* Pasos del dia */
+ol.dia { list-style: none; margin: 0; padding: 0; display: grid; }
+ol.dia > li { display: grid; grid-template-columns: 6rem 1fr 7.5rem; gap: 16px; padding-block: 14px; border-bottom: 1px solid var(--linea); align-items: start; }
+ol.dia .p { font: 600 0.85rem var(--f-mono); color: var(--acento); padding-top: 3px; }
+ol.dia .t { font-variant-numeric: tabular-nums; text-align: right; font-weight: 700; }
+ol.dia .t small { display: block; font-weight: 400; color: var(--gris); font-size: 0.8rem; }
+ol.dia li > div { display: grid; gap: 6px; }
+ol.dia ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
+
+/* Barras de motivos, a escala del mayor (1.141) */
+.barras { display: grid; gap: 8px; }
+.barra { display: grid; grid-template-columns: minmax(11rem, 15rem) 1fr 3.5rem; gap: 12px; align-items: center; font-size: 0.92rem; }
+.barra .pista { height: 12px; background: var(--codigo); border-radius: 3px; overflow: hidden; }
+.barra .pista i { display: block; height: 100%; background: var(--gris); }
+.barra.ok .pista i { background: var(--acento); }
+.barra b { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Cronologia */
+dl.crono { margin: 0; display: grid; }
+dl.crono div { display: grid; grid-template-columns: 6.2rem 1fr; gap: 16px; padding-block: 10px; border-bottom: 1px solid var(--linea); }
+dl.crono dt { font: 600 0.85rem var(--f-mono); color: var(--gris); padding-top: 2px; }
+dl.crono dd { margin: 0; }
+
+.nota { padding: 12px 16px; border-radius: 6px; background: var(--acento-suave); display: grid; gap: 6px; }
+.nota.cuidado { background: var(--aviso-suave); }
+.nota.cuidado .etiqueta { color: var(--aviso); }
+ul.lista { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; max-width: 70ch; }
+
+footer { margin-top: 48px; padding-top: 14px; border-top: 2px solid var(--tinta); color: var(--gris); font-size: 0.88rem; display: grid; gap: 6px; }
+
+@media (max-width: 620px) {
+  ol.dia > li { grid-template-columns: 1fr; gap: 4px; }
+  ol.dia .t { text-align: left; }
+  dl.crono div { grid-template-columns: 1fr; gap: 2px; }
+  .barra { grid-template-columns: 1fr 3rem; }
+  .barra .pista { grid-column: 1 / -1; grid-row: 2; }
+}
+a:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+</style>
+
+<div class="hoja">
+
+<header class="portada">
+  <span class="etiqueta">Documentación del proceso · Corte 06/10/2026</span>
+  <h1>Automatización Moodle vs SINU</h1>
+  <p class="bajada">Qué hace el robot, paso a paso; cuánto tarda, medido en sus propias bitácoras; con qué versiones trabaja; cómo tipifica cada caso y qué debe hacer el equipo con cada uno.</p>
+  <dl class="ficha">
+    <div><dt>Horario</dt><dd>Lunes a viernes, 9:00</dd></div>
+    <div><dt>Reintento</dt><dd>9:30 si el tablero no estaba listo</dd></div>
+    <div><dt>Escribe en</dt><dd>SINU · ISEF07</dd></div>
+    <div><dt>Datos medidos</dt><dd>08/09 – 06/10/2026</dd></div>
+  </dl>
+</header>
+
+<nav class="indice" aria-label="Contenido">
+  <span class="etiqueta">Contenido</span>
+  <ol>
+    <li><span>1</span><a href="#c1">Resumen</a></li>
+    <li><span>2</span><a href="#c2">Sistemas y cuentas</a></li>
+    <li><span>3</span><a href="#c3">El proceso paso a paso</a></li>
+    <li><span>4</span><a href="#c4">Tiempos medidos</a></li>
+    <li><span>5</span><a href="#c5">Tipificaciones</a></li>
+    <li><span>6</span><a href="#c6">Reglas vigentes del proceso</a></li>
+    <li><span>7</span><a href="#c7">Versiones</a></li>
+    <li><span>8</span><a href="#c8">Historial de cambios</a></li>
+    <li><span>9</span><a href="#c9">Operación y contingencias</a></li>
+    <li><span>10</span><a href="#c10">Pendientes y riesgos</a></li>
+  </ol>
+</nav>
+
+<!-- 1 -->
+<section class="cap" id="c1" aria-labelledby="t1">
+  <div class="cabeza-cap"><span class="num-cap">1</span><h2 id="t1">Resumen</h2></div>
+  <p>Cada día hábil, el robot descarga de Power BI la lista de estudiantes que tienen la materia en SINU pero no aparecen matriculados en Moodle. La limpia, la sube a Drive como Sheet del día y, materia por materia, vincula los grupos en el módulo ISEF07 de SINU para que la matrícula llegue a Moodle. Al final pinta el resultado de cada fila en el Sheet y avisa por Google Calendar.</p>
+  <div class="cifras">
+    <div class="cifra"><b>53</b><span>corridas registradas entre el 08/09 y el 06/10</span></div>
+    <div class="cifra"><b>4.070</b><span>unidades (cédula + materia) con resultado final</span></div>
+    <div class="cifra"><b>1.141</b><span>vinculadas y confirmadas (verde)</span></div>
+    <div class="cifra"><b>94 s</b><span>mediana por unidad trabajada en SINU (1.246 mediciones)</span></div>
+  </div>
+  <p>Una "unidad" es una fila del reporte: un estudiante con una materia. Muchas de las rojas no son fallos del robot. Son grupos sin curso en Moodle o materias que no están en SINU, y el robot las detecta sin tocar nada (ver <a href="#c5">5</a>).</p>
+</section>
+
+<!-- 2 -->
+<section class="cap" id="c2" aria-labelledby="t2">
+  <div class="cabeza-cap"><span class="num-cap">2</span><h2 id="t2">Sistemas y cuentas</h2></div>
+  <div class="tabla"><table>
+    <thead><tr><th>Sistema</th><th>Para qué lo usa el robot</th><th>Cuenta</th><th>Permiso</th></tr></thead>
+    <tbody>
+      <tr><td class="fuerte">Power BI</td><td>Lee la fecha del tablero y exporta la tabla REPORTE del informe ValidacionMoodle, página MOODLE-VS-SINU-EST.</td><td>Compartida del área</td><td>Lectura</td></tr>
+      <tr><td class="fuerte">Google Drive / Sheets</td><td>Sube el Sheet del día a <code>REPORTES 2026 › MES</code>; lee de él el período; lo reemplaza con la columna de resultados.</td><td>La de quien opera</td><td>Edición de la carpeta</td></tr>
+      <tr><td class="fuerte">SINU · ISEF07</td><td>Lee la grilla de cada estudiante y ejecuta "Vincular" o "Desvincular" grupos matriculados.</td><td>La de quien opera</td><td><strong>Escritura</strong>: el único módulo donde escribe</td></tr>
+      <tr><td class="fuerte">SINU · PACF50</td><td>Verifica si un grupo existe y si tiene check de Moodle.</td><td>La de quien opera</td><td>Lectura</td></tr>
+      <tr><td class="fuerte">SINU · ISEF05</td><td>Ya no se usa: retirado el 06/10/2026.</td><td>—</td><td>—</td></tr>
+      <tr><td class="fuerte">Google Calendar</td><td>Crea el evento de aviso: éxito, tablero no actualizado o fallo.</td><td>La de quien opera</td><td>Su calendario</td></tr>
+      <tr><td class="fuerte">Moodle</td><td>No se toca directamente; recibe la matrícula desde SINU.</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <p>El robot trabaja en un computador con Windows, a través de un Microsoft Edge con perfil propio que guarda las sesiones. La instalación está en la <a href="https://claude.ai/code/artifact/1b07b0ac-2acf-4a00-b811-369a194cc82c">guía de instalación</a> (30 a 45 minutos, una sola vez).</p>
+</section>
+
+<!-- 3 -->
+<section class="cap" id="c3" aria-labelledby="t3">
+  <div class="cabeza-cap"><span class="num-cap">3</span><h2 id="t3">El proceso paso a paso</h2></div>
+  <p>Así se ve en la bitácora (<code>logs\dia_completo_AAAAMMDD_HHMMSS.log</code>). El tiempo de la derecha está medido en las corridas completas del 30/09, 01/10 y 06/10.</p>
+  <ol class="dia">
+    <li><span class="p">PASO 0/6</span>
+      <div><strong>Navegador y sesión de Google</strong>
+        <span>Abre el Edge del robot y comprueba que Drive responde sin pedir inicio de sesión. Si la sesión se cayó, se detiene sin tocar nada.</span></div>
+      <span class="t">~15 s</span></li>
+    <li><span class="p">PASO 1/6</span>
+      <div><strong>Cerrojo: ¿se actualizó el tablero hoy?</strong>
+        <span>Lee "Datos actualizados el d/m/aa" en el encabezado del tablero.</span>
+        <ul>
+          <li>Si es de hoy, sigue.</li>
+          <li>Si es de otro día, <strong>pausa el día</strong>: no descarga, avisa y deja el estado en pausa. La tarea de las 9:30 lo vuelve a intentar.</li>
+          <li>Si no puede leer la fecha, la relee dos veces con 10 s de pausa y, si sigue ilegible, avisa.</li>
+        </ul></div>
+      <span class="t">0,2 – 0,6 min</span></li>
+    <li><span class="p">PASO 2/6</span>
+      <div><strong>Descarga del reporte de Power BI</strong>
+        <span>Lee la tarjeta NO MATRICULADO, abre el menú de la tabla REPORTE, elige "Datos con diseño actual" y exporta. Desde el 06/10 toma el archivo directamente de la respuesta de Power BI y comprueba que las filas coinciden con la tarjeta. Hasta 5 intentos, con 90 s entre uno y otro.</span></div>
+      <span class="t">0,7 – 3,4 min</span></li>
+    <li><span class="p">PASO 3/6</span>
+      <div><strong>Limpieza, orden y Sheet del día</strong>
+        <ul>
+          <li>Validación del reporte (fase 1): quita espacios, marca campos obligatorios vacíos y duplicados (ver <a href="#c5-1">5.1</a>).</li>
+          <li>Ordena de la A a la Z por período.</li>
+          <li>Sube el archivo a Drive y lo nombra <code>REPORTE 06/10/2026 #45</code>: la fecha del reporte y el valor de la tarjeta.</li>
+          <li>Si ya existe un reporte de esa fecha, se detiene antes de tocar SINU.</li>
+        </ul></div>
+      <span class="t">0,8 – 7,6 min</span></li>
+    <li><span class="p">PASO 4/6</span>
+      <div><strong>Vinculación en ISEF07, período por período</strong>
+        <ul>
+          <li>Lee el período de la fila 2 del Sheet: el Sheet abierto es requisito para entrar a ISEF07.</li>
+          <li>Marca en fucsia, sin consultarlos, los grupos que el responsable declaró inexistentes en <code>config\grupos_no_existen.txt</code>.</li>
+          <li>Verifica en PACF50 los grupos con 10 filas o más. Si el grupo no existe o no tiene curso en Moodle, descarta todas sus filas sin tocar ISEF07.</li>
+          <li>Por cada estudiante: lee su grilla de grupos, filtra la materia y decide la acción (ver <a href="#c5-2">5.2</a>). Después de cada acción relee la grilla hasta confirmar el check.</li>
+          <li>Si una fila falla, pregunta a PACF50 por su grupo. Si un grupo deja a alguien desvinculado, las demás filas de ese grupo no se intentan y se escalan.</li>
+          <li>Salta solo lo que ya quedó en verde <strong>ese mismo día</strong>.</li>
+        </ul></div>
+      <span class="t">28 min – 6 h<small>según filas</small></span></li>
+    <li><span class="p">PASO 5/6</span>
+      <div><strong>Marcar la gestión en el Sheet</strong>
+        <span>Escribe en la columna VALIDACION_RPA la etiqueta y el color de cada fila, y reemplaza el Sheet del día en Drive conservando el mismo enlace.</span></div>
+      <span class="t">0,1 – 1,2 min</span></li>
+    <li><span class="p">PASO 6/6</span>
+      <div><strong>Cierre y aviso</strong>
+        <span>Resume el día: unidades, verdes, rojas, grupos a validar y ciclos sin cerrar. Crea el evento en Calendar y guarda una copia en <code>logs\avisos\</code>.</span></div>
+      <span class="t">segundos</span></li>
+  </ol>
+  <div class="nota">
+    <span class="etiqueta">Candado de escritura</span>
+    <p>La configuración trae <code>MODO_SIMULACION=true</code>: con eso nada escribe en SINU. El flujo diario lo abre al empezar y lo vuelve a cerrar al terminar, incluso si falla. ISEF07 es el único módulo con permiso de escritura en el código.</p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="cap" id="c4" aria-labelledby="t4">
+  <div class="cabeza-cap"><span class="num-cap">4</span><h2 id="t4">Tiempos medidos</h2></div>
+  <p>Todos los tiempos salen de las bitácoras y del diario de resultados. Ninguno es estimado salvo donde se indica.</p>
+
+  <h3>4.1 Corridas completas recientes</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Corrida</th><th class="n">Filas a trabajar</th><th class="n">Paso 2</th><th class="n">Paso 3</th><th class="n">Paso 4 (SINU)</th><th class="n">Total</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">06/10 10:33</td><td class="n">19</td><td class="n">0,7 min</td><td class="n">0,8 min</td><td class="n">27,9 min</td><td class="n">31 min</td></tr>
+      <tr><td class="mono">22/09 09:34</td><td class="n">85</td><td class="n">—</td><td class="n">1,3 min</td><td class="n">44,3 min</td><td class="n">47 min</td></tr>
+      <tr><td class="mono">30/09 09:00</td><td class="n">866</td><td class="n">0,8 min</td><td class="n">1,8 min</td><td class="n">113,2 min</td><td class="n">118 min</td></tr>
+      <tr><td class="mono">21/09 09:00</td><td class="n">205</td><td class="n">0,9 min</td><td class="n">1,7 min</td><td class="n">356,0 min</td><td class="n">360 min</td></tr>
+    </tbody>
+  </table></div>
+  <p>Lo que decide la duración es el paso 4. No depende solo del número de filas, sino de cuántas hay que trabajar de verdad en ISEF07. El 30/09 tenía 866 filas, pero PACF50 descartó grupos enteros antes de empezar. El 21/09 tenía 205, casi todas para reciclar.</p>
+
+  <h3>4.2 Tiempo por unidad en SINU</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Medida</th><th class="n">Valor</th><th>Fuente</th></tr></thead>
+    <tbody>
+      <tr><td>Solo vincular</td><td class="n">~43 s</td><td>Corrida del 25/09</td></tr>
+      <tr><td>Reciclar (desvincular + vincular)</td><td class="n">~95 – 124 s</td><td>Corridas del 25/09 y 26/09</td></tr>
+      <tr><td>Mediana de todas las unidades trabajadas</td><td class="n">94 s</td><td>1.246 unidades, 04/09 – 06/10</td></tr>
+      <tr><td>El 90 % de las unidades tarda menos de</td><td class="n">195 s</td><td>Mismo conjunto</td></tr>
+      <tr><td>Leer la grilla de un estudiante</td><td class="n">~7 – 20 s</td><td>Bitácora del 06/10 y del 25/09</td></tr>
+      <tr><td>Consulta de un grupo en PACF50 (promedio por día)</td><td class="n">~8 – 16 s</td><td>82 consultas, 28/09 – 06/10</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Regla práctica para planear</strong> (estimación): entre 0,5 y 1,7 minutos por fila que sí se trabaja en ISEF07. Por ejemplo, 100 filas son entre 1 y 3 horas de paso 4.</p>
+
+  <h3>4.3 Lo que ahorraron los cambios recientes</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Cambio</th><th>Ahorro medido</th></tr></thead>
+    <tbody>
+      <tr><td>Retirar ISEF05 (06/10)</td><td>11,4 min por día en promedio: 57 min en 5 días, con picos de 20 a 23 min. 29 de sus 82 consultas no respondían y agotaban la espera.</td></tr>
+      <tr><td>Tomar el reporte directo de Power BI (06/10)</td><td>Antes, Edge se caía en 6 de 9 descargas y cada reintento costaba unos 2,5 min más 90 s de espera. Ahora tarda alrededor de 1 s después de confirmar la exportación.</td></tr>
+      <tr><td>Reconocer el nuevo nombre de la tabla (05/10)</td><td>Evita los 20 minutos de 5 intentos fallidos que costó el 05 y el 06/10, además del día sin procesar.</td></tr>
+      <tr><td>Apagar la revisión de desbordes (06/10)</td><td>6 a 10 min por día: entre 20 y 34 relecturas completas del estudiante, de ~18 s cada una. El 06/10 fueron 6 de los 28 minutos del paso 4.</td></tr>
+      <tr><td>Pausa por tablero viejo (28/09)</td><td>Antes, el robot esperaba con el navegador abierto hasta 90 minutos.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>4.4 Límites configurados</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Límite</th><th class="n">Valor</th></tr></thead>
+    <tbody>
+      <tr><td>Intentos de descarga de Power BI · espera entre intentos</td><td class="n">5 · 90 s</td></tr>
+      <tr><td>Espera máxima de la descarga</td><td class="n">300 s</td></tr>
+      <tr><td>Espera máxima de una acción en ISEF07</td><td class="n">300 s</td></tr>
+      <tr><td>Filas mínimas para verificar un grupo antes de procesarlo</td><td class="n">10</td></tr>
+      <tr><td>Intentos por unidad en ISEF07</td><td class="n">1</td></tr>
+      <tr><td>Veces que puede reabrir SINU en un período</td><td class="n">3</td></tr>
+      <tr><td>Estudiantes vacíos seguidos para detener el período</td><td class="n">3</td></tr>
+      <tr><td>Duración máxima de la tarea programada</td><td class="n">8 h</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 5 -->
+<section class="cap" id="c5" aria-labelledby="t5">
+  <div class="cabeza-cap"><span class="num-cap">5</span><h2 id="t5">Tipificaciones</h2></div>
+  <p>Cada fila del reporte termina con una tipificación. Las etiquetas están escritas tal como aparecen en el Sheet; los colores son los reales.</p>
+
+  <h3 id="c5-1">5.1 Validación del reporte (paso 3)</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Color</th><th>Etiqueta en el Sheet</th><th>Cuándo</th><th>Qué pasa con la fila</th></tr></thead>
+    <tbody>
+      <tr><td><span class="muestra" style="background:var(--s-azul)"></span>Azul claro, celda</td><td>—</td><td>La celda tenía espacios de más.</td><td>Se limpia y se procesa.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-naranja)"></span>Naranja, celda</td><td class="etq-sheet">DATO INCOMPLETO - NO PROCESADO</td><td>Falta IDENTIFICACION, NOMBRE_COMPLETO, CORREO o COD_MATERIA.</td><td>No se procesa. Hay que corregir el dato en el origen.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-amarillo)"></span>Amarillo, fila</td><td class="etq-sheet">DUPLICADO - VALIDAR ORIGEN</td><td>Misma cédula y materia, pero con datos distintos.</td><td>No se procesa ninguna copia.</td></tr>
+      <tr><td>Sin color</td><td>—</td><td>Duplicado exacto.</td><td>Se procesa solo la primera aparición.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="c5-2">5.2 Acción en ISEF07 (paso 4)</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Acción</th><th>Cuándo</th><th class="n">Tiempo</th></tr></thead>
+    <tbody>
+      <tr><td class="fuerte">Vincular</td><td>La materia está en la grilla del estudiante sin el check "Vinculado?".</td><td class="n">~43 s</td></tr>
+      <tr><td class="fuerte">Desvincular + vincular (reciclar)</td><td>La materia ya tiene el check, pero el estudiante sigue en el reporte. Reciclar es la reparación.</td><td class="n">~95 s</td></tr>
+      <tr><td class="fuerte">Nada</td><td>La materia no está en la grilla del estudiante.</td><td class="n">—</td></tr>
+      <tr><td class="fuerte">No se intenta</td><td>El grupo no tiene "Curso en moodle?", no existe en PACF50 o otro estudiante del mismo grupo ya quedó desvinculado en la corrida.</td><td class="n">—</td></tr>
+    </tbody>
+  </table></div>
+  <p>Durante el reciclado, cada estudiante pasa por tres estados en <code>logs\ciclos_abiertos.jsonl</code>: <code>desvinculando</code>, <code>desvinculado-pendiente-vincular</code> y <code>cerrado</code>. Si se queda en cualquiera de los dos primeros, el estudiante puede estar sin su curso y aparece como "ciclo sin cerrar".</p>
+
+  <h3>5.3 Resultado final de cada fila (paso 5)</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Color</th><th>Etiqueta en el Sheet</th><th>Motivo interno</th><th>Qué significa</th><th>Quién actúa y cómo</th></tr></thead>
+    <tbody>
+      <tr><td><span class="muestra" style="background:var(--s-verde)"></span>Verde</td><td class="etq-sheet">VINCULADA Y VALIDADA</td><td class="mono">vinculada-y-confirmada</td><td>Se vinculó y el check se confirmó al releer la grilla.</td><td>Nadie.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-rojo)"></span>Rojo</td><td class="etq-sheet">SIN CHECK DE MOODLE</td><td class="mono">sin-curso-en-moodle</td><td>El grupo existe en SINU pero no tiene el check "Curso en moodle?" (PACF50 o grilla de ISEF07). No se intentó. La celda lleva solo la etiqueta.</td><td>Quien administra Moodle: crear el curso. Hasta que exista, reintentar no sirve.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-rojo)"></span>Rojo</td><td class="etq-sheet">ESCALADO A VALIDACIÓN MANUAL (ISEF05/PACF50)</td><td class="mono">check-no-confirmado</td><td>Se ejecutó vincular, pero el check no apareció o ISEF07 no dejó vincular.</td><td>El equipo: validar el check en PACF50 y anotarlo. La etiqueta todavía menciona ISEF05.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-rojo)"></span>Rojo</td><td class="etq-sheet">ESCALADO A VALIDACIÓN MANUAL (ISEF05/PACF50)</td><td class="mono">escalado-validacion-manual</td><td>No se tocó: otro estudiante del mismo grupo ya falló en la corrida.</td><td>Validar el grupo. Si está sano, sus filas se reprocesan; SINU quedó como estaba.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-rojo)"></span>Rojo</td><td class="etq-sheet">QUEDO DESVINCULADA - VINCULAR A MANO EN ISEF07</td><td class="mono">quedo-desvinculada</td><td>Se desvinculó y no se pudo volver a vincular.</td><td><strong>Urgente</strong>: vincular en ISEF07 o con el comando de reparación (ver <a href="#c9">9</a>).</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-fucsia)"></span>Fucsia</td><td class="etq-sheet">GRUPO NO EXISTE EN SINU</td><td class="mono">grupo-no-existe-en-sinu</td><td>PACF50 no tiene el grupo, o está en la lista manual de grupos inexistentes. La celda lleva solo la etiqueta.</td><td>Quien programa grupos en SINU. No se procesa.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-rojo)"></span>Rojo</td><td class="etq-sheet">REVISAR</td><td class="mono">materia-no-esta-en-sinu<br>no-se-pudo-leer<br>fallo-tecnico<br>accion-se-desbordo</td><td>La materia no está en la grilla del estudiante; la grilla no se pudo leer; ISEF07 no respondió; o una acción afectó otras materias (en ese caso el período se detiene).</td><td>Revisar caso a caso. Las técnicas se resuelven relanzando el día.</td></tr>
+      <tr><td><span class="muestra" style="background:var(--s-morado)"></span>Morado</td><td class="etq-sheet">VALIDAR A MANO - ciclo sin cerrar</td><td class="mono">ciclo abierto</td><td>Un reciclado quedó a medias y no hay un verde posterior.</td><td>Revisar en ISEF07 cómo quedó la matrícula. Se pinta con <code>marcar_validacion_manual.py</code>.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>5.4 Cuánto pesa cada tipificación</h3>
+  <p>Estado final de 4.070 unidades, del 04/09 al 06/10/2026.</p>
+  <div class="barras" role="list">
+    <div class="barra ok" role="listitem"><span>Vinculada y confirmada</span><span class="pista"><i style="width:100%"></i></span><b>1.141</b></div>
+    <div class="barra" role="listitem"><span>Sin curso en Moodle</span><span class="pista"><i style="width:98.8%"></i></span><b>1.127</b></div>
+    <div class="barra" role="listitem"><span>Materia no está en SINU</span><span class="pista"><i style="width:64.1%"></i></span><b>731</b></div>
+    <div class="barra" role="listitem"><span>Grupo no existe en SINU</span><span class="pista"><i style="width:48.9%"></i></span><b>558</b></div>
+    <div class="barra" role="listitem"><span>No se pudo leer</span><span class="pista"><i style="width:22.3%"></i></span><b>254</b></div>
+    <div class="barra" role="listitem"><span>Check no confirmado</span><span class="pista"><i style="width:11.7%"></i></span><b>133</b></div>
+    <div class="barra" role="listitem"><span>Escalado a validación manual</span><span class="pista"><i style="width:10.2%"></i></span><b>116</b></div>
+    <div class="barra" role="listitem"><span>Fallo técnico</span><span class="pista"><i style="width:0.8%"></i></span><b>9</b></div>
+    <div class="barra" role="listitem"><span>Quedó desvinculada</span><span class="pista"><i style="width:0.1%"></i></span><b>1</b></div>
+  </div>
+  <p>Las tres rojas más grandes (sin curso, materia no está en SINU y grupo no existe) son 2.416 de las 2.929 rojas. Son problemas del origen de los datos, no del robot: se resuelven creando cursos o programando grupos, no relanzando.</p>
+
+  <h3>5.5 Estado del día y avisos</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Estado del día</th><th>Evento en Calendar</th><th>Qué hacer</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">TERMINADO</td><td>✅ ÉXITO: Flujo Moodle vs SINU completado</td><td>Revisar los rojos del Sheet y los ciclos sin cerrar del resumen.</td></tr>
+      <tr><td class="mono">PAUSADO_BI_VIEJO</td><td>⚠️ Tablero Power BI no actualizado</td><td>Esperar al reintento de las 9:30, o relanzar cuando el área de datos actualice el tablero.</td></tr>
+      <tr><td class="mono">—</td><td>⚠️ ALERTA: no se pudo leer la fecha del tablero</td><td>Mirar el tablero: puede haber cambiado de forma.</td></tr>
+      <tr><td class="mono">EN_CURSO</td><td>❌ FALLO en PASO n/6</td><td>Ver la tabla de contingencias (<a href="#c9">9</a>).</td></tr>
+    </tbody>
+  </table></div>
+  <p>Los casos escalados quedan además en <code>logs\escalado_isef05_pacf50.jsonl</code>, con uno de estos motivos: <code>vinculado-sin-check</code>, <code>check-no-verificable</code> o <code>isef07-no-permite-vincular</code>.</p>
+</section>
+
+<!-- 6 -->
+<section class="cap" id="c6" aria-labelledby="t6">
+  <div class="cabeza-cap"><span class="num-cap">6</span><h2 id="t6">Reglas vigentes del proceso</h2></div>
+  <p>Decisiones del responsable del proceso que el robot aplica hoy.</p>
+  <ul class="lista">
+    <li><strong>Exactitud antes que velocidad.</strong> Solo ISEF07 escribe; los demás módulos se leen.</li>
+    <li><strong>No se procesan datos viejos.</strong> Si el tablero no se actualizó hoy, el día se pausa.</li>
+    <li><strong>El número del reporte es la tarjeta NO MATRICULADO</strong>, no un consecutivo.</li>
+    <li><strong>El Sheet del día va antes que ISEF07</strong>, y el período se toma de él.</li>
+    <li><strong>La unidad de trabajo es cédula + materia.</strong> Solo se toca la materia del reporte, nunca otras del estudiante.</li>
+    <li><strong>Si ya está vinculada y sigue en el reporte, se recicla</strong> (desvincular y vincular): el check "Vinculado?" no es confiable por sí solo.</li>
+    <li><strong>Un intento por unidad.</strong> Si falla, se tipifica y se sigue.</li>
+    <li><strong>Un grupo que sale muchas veces es una sola pregunta.</strong> Los grupos con 10 filas o más se verifican antes de empezar.</li>
+    <li><strong>Solo PACF50 decide si un grupo existe o tiene curso.</strong> ISEF05 se retiró el 06/10/2026.</li>
+    <li><strong>"No lo sé" nunca descarta.</strong> Si PACF50 no responde, la fila se procesa.</li>
+    <li><strong>Todo el reporte en la misma sesión de SINU.</strong> Si la pantalla se traba, se reabre (hasta 3 veces) y se sigue.</li>
+    <li><strong>Cada día se procesa desde cero.</strong> Solo se salta lo que quedó en verde ese mismo día; lo que reaparece se procesa otra vez.</li>
+  </ul>
+</section>
+
+<!-- 7 -->
+<section class="cap" id="c7" aria-labelledby="t7">
+  <div class="cabeza-cap"><span class="num-cap">7</span><h2 id="t7">Versiones</h2></div>
+  <p>Verificadas en el computador de producción el 06/10/2026, salvo donde se indica.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Componente</th><th>Versión</th><th>Nota</th></tr></thead>
+    <tbody>
+      <tr><td class="fuerte">Windows</td><td class="mono">11 Pro 10.0.26200</td><td>64 bits</td></tr>
+      <tr><td class="fuerte">Python</td><td class="mono">3.11.9</td><td>Instalar con <code>py -3.11</code>; otras versiones no están probadas.</td></tr>
+      <tr><td class="fuerte">Playwright</td><td class="mono">1.47.0</td><td>Control del navegador. Incluye Node 20.17.0.</td></tr>
+      <tr><td class="fuerte">openpyxl</td><td class="mono">3.1.5</td><td>Lectura y escritura de Excel.</td></tr>
+      <tr><td class="fuerte">python-dotenv</td><td class="mono">1.0.1</td><td>Configuración.</td></tr>
+      <tr><td class="fuerte">pytest</td><td class="mono">8.3.3</td><td>758 pruebas automáticas, todas pasan.</td></tr>
+      <tr><td class="fuerte">Microsoft Edge</td><td class="mono">154.0.4258.53</td><td>Navegador de producción desde el 24/09/2026. Se actualiza solo.</td></tr>
+      <tr><td class="fuerte">SINU</td><td class="mono">6.0.0 (Acies)</td><td>SmartClient 7.1. Medido el 16/09/2026.</td></tr>
+      <tr><td class="fuerte">Kaspersky Endpoint</td><td class="mono">12.12.0.522</td><td>Bloquea scripts .ps1; por eso el lanzador es un .bat. Medido el 16/09/2026.</td></tr>
+      <tr><td class="fuerte">Power BI, Drive, Calendar, Moodle</td><td>Servicios en la nube</td><td>Sin número de versión; pueden cambiar sin aviso, como pasó con la tabla el 05/10.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 8 -->
+<section class="cap" id="c8" aria-labelledby="t8">
+  <div class="cabeza-cap"><span class="num-cap">8</span><h2 id="t8">Historial de cambios</h2></div>
+  <dl class="crono">
+    <div><dt>21/08/2026</dt><dd>Reglas base: exactitud primero, solo ISEF07 escribe, CORREO obligatorio, convención de nombres en Drive, reciclar lo ya vinculado.</dd></div>
+    <div><dt>24/08/2026</dt><dd>El número del reporte pasa a ser el valor de la tarjeta NO MATRICULADO.</dd></div>
+    <div><dt>31/08/2026</dt><dd>El Sheet va antes que ISEF07 y el período se lee de él.</dd></div>
+    <div><dt>01/09/2026</dt><dd>Primera vinculación real en SINU: 12 estudiantes.</dd></div>
+    <div><dt>03/09/2026</dt><dd>La unidad de trabajo pasa a ser cédula + materia, después de que una acción alcanzara 34 materias que no eran del reporte.</dd></div>
+    <div><dt>04/09/2026</dt><dd>Colores verde y rojo en el Sheet, y diario de resultados.</dd></div>
+    <div><dt>08/09/2026</dt><dd>El orquestador pasa de PowerShell a Python porque Kaspersky bloqueaba el script.</dd></div>
+    <div><dt>16/09/2026</dt><dd>Consulta a ISEF05 antes de procesar, por el grupo DTA32/55598 sin curso.</dd></div>
+    <div><dt>24/09/2026</dt><dd>Cambio de Chrome a Microsoft Edge: Chrome se caía al descargar de Power BI.</dd></div>
+    <div><dt>25/09/2026</dt><dd>Un intento por unidad; cortocircuito por grupo; verificar primero los grupos grandes; todo en una sesión de SINU.</dd></div>
+    <div><dt>26/09/2026</dt><dd>Umbral de verificación en 10 filas; ISEF05 y luego PACF50, en orden.</dd></div>
+    <div><dt>28/09/2026</dt><dd>Un navegador por módulo de SINU. El tablero viejo pausa el día, con reintento a las 9:30. No se detiene el período: se reabre SINU hasta 3 veces. Nueva tipificación fucsia "Grupo no existe en SINU".</dd></div>
+    <div><dt>05/10/2026</dt><dd>Power BI renombra el tipo de la tabla a "Objeto visual de tabla". Se corrige el 06/10; costó dos días sin descarga.</dd></div>
+    <div><dt>06/10/2026</dt><dd>La descarga se toma directamente de Power BI, sin el gestor de descargas de Edge. Cada día se procesa desde cero. <strong>Se retira ISEF05</strong>: solo PACF50 verifica grupos. La plantilla de instalación pasa a Edge. Se apaga la revisión de desbordes.</dd></div>
+  </dl>
+</section>
+
+<!-- 9 -->
+<section class="cap" id="c9" aria-labelledby="t9">
+  <div class="cabeza-cap"><span class="num-cap">9</span><h2 id="t9">Operación y contingencias</h2></div>
+  <h3>9.1 Reglas mientras corre</h3>
+  <ul class="lista">
+    <li>No usar SINU con la misma cuenta: comparten la sesión.</li>
+    <li>No apagar ni suspender el computador. Un apagado el 02/10 dejó a un estudiante a medio desvincular.</li>
+    <li>Una sola persona por día en modo real.</li>
+    <li>La tarea solo corre con la sesión de Windows abierta. Si el equipo estaba apagado a las 9:00, arranca al iniciar sesión.</li>
+  </ul>
+
+  <h3>9.2 Qué hacer según el síntoma</h3>
+  <p>Los comandos se escriben en PowerShell, dentro de la carpeta del proyecto.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Síntoma</th><th>Acción</th></tr></thead>
+    <tbody>
+      <tr><td class="fuerte">Tablero no actualizado</td><td>Esperar a las 9:30. Para relanzar a mano: <code>.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad</code></td></tr>
+      <tr><td class="fuerte">Falla en el paso 0</td><td>Volver a iniciar sesión en Google: <code>.venv\Scripts\python.exe scripts\probar_perfil.py --iniciar-sesion</code></td></tr>
+      <tr><td class="fuerte">Paso 2: "no tiene ningún visual de tabla"</td><td>Power BI cambió el tipo de la tabla. El error muestra el tipo nuevo entre paréntesis; se agrega en <code>selectores_powerbi.py</code>.</td></tr>
+      <tr><td class="fuerte">Paso 5: la subida a Drive falló</td><td>El archivo marcado quedó en el computador; la bitácora dice cuál. <code>.venv\Scripts\python.exe scripts\marcar_gestion.py "RUTA" --subir --visible --reemplazar</code></td></tr>
+      <tr><td class="fuerte">Ciclos sin cerrar</td><td><code>.venv\Scripts\python.exe scripts\reparar_desvinculados.py --sheet-url "URL_DEL_SHEET" --ejecutar-de-verdad</code></td></tr>
+      <tr><td class="fuerte">Corrida cortada a mitad</td><td>Relanzar el día; no repite lo que quedó en verde hoy.</td></tr>
+      <tr><td class="fuerte">Repetir solo algunos períodos</td><td>Agregar <code>--periodos "26V05,26ES5"</code>, siempre entre comillas: sin comillas PowerShell lee 2026D como el número 2026 y el período se salta.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>9.3 Dónde queda cada cosa</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Qué</th><th>Dónde</th></tr></thead>
+    <tbody>
+      <tr><td>Sheet del día</td><td>Drive › <code>REPORTES 2026 › MES › REPORTE dd/mm/aaaa #N</code></td></tr>
+      <tr><td>Bitácora de cada corrida</td><td><code>logs\dia_completo_*.log</code></td></tr>
+      <tr><td>Resultado por unidad</td><td><code>logs\resultados_etapa4.jsonl</code>, archivado cada día como <code>resultados_etapa4_AAAAMMDD.jsonl</code></td></tr>
+      <tr><td>Ciclos de reciclado</td><td><code>logs\ciclos_abiertos.jsonl</code></td></tr>
+      <tr><td>Casos escalados</td><td><code>logs\escalado_isef05_pacf50.jsonl</code></td></tr>
+      <tr><td>Estado del día</td><td><code>logs\estado\estado_AAAAMMDD.json</code></td></tr>
+      <tr><td>Copia de cada aviso</td><td><code>logs\avisos\</code></td></tr>
+      <tr><td>Reporte descargado y procesado</td><td><code>data\raw\</code> y <code>data\processed\</code></td></tr>
+      <tr><td>Grupos declarados inexistentes</td><td><code>config\grupos_no_existen.txt</code> (una línea por grupo: <code>MATERIA/GRUPO/PERIODO</code>)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 10 -->
+<section class="cap" id="c10" aria-labelledby="t10">
+  <div class="cabeza-cap"><span class="num-cap">10</span><h2 id="t10">Pendientes y riesgos</h2></div>
+  <div class="tabla"><table>
+    <thead><tr><th>Pendiente</th><th>Impacto</th><th>Quién decide</th></tr></thead>
+    <tbody>
+      <tr><td class="fuerte">Las mismas filas cada día</td><td>Cerca del 92 % de las filas del reporte se repiten de un día a otro, sin explicación aún.</td><td>Responsable del proceso y área de datos</td></tr>
+      <tr><td class="fuerte">Lecturas de ISEF07 que se traban</td><td>El 26/09, 8 de 38 lecturas se quedaron 124 s esperando. Sin diagnosticar.</td><td>Equipo técnico</td></tr>
+      <tr><td class="fuerte">Etiqueta "REVISAR" agrupa cuatro motivos</td><td>Materia que no está en SINU, lectura fallida, fallo técnico y desborde se ven igual en el Sheet.</td><td>Equipo técnico</td></tr>
+      <tr><td class="fuerte">Etiqueta de escalado menciona ISEF05</td><td>"ESCALADO A VALIDACIÓN MANUAL (ISEF05/PACF50)" ya no refleja el proceso.</td><td>Responsable del proceso</td></tr>
+      <tr><td class="fuerte">Escalados nunca se marcan como resueltos</td><td>El registro de escalados solo crece.</td><td>Equipo técnico</td></tr>
+      <tr><td class="fuerte">Candado de escritura en la configuración</td><td>Un corte de luz a mitad de corrida puede dejarlo abierto.</td><td>Equipo técnico</td></tr>
+      <tr><td class="fuerte">Cambios sin guardar en el repositorio</td><td>Los ajustes desde el 26/09 están en el computador, pero no en el control de versiones.</td><td>Equipo técnico</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Cerrados el 06/10/2026</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Pendiente</th><th>Cómo se cerró</th></tr></thead>
+    <tbody>
+      <tr><td class="fuerte">6 ciclos sin cerrar (28/09 y 02/10)</td><td>Ninguno estaba desvinculado. Si lo estuviera, Moodle no lo tendría matriculado y saldría en el reporte siguiente. 1000000006 quedó en verde el mismo 28/09; 1000000003 y 1000000007 no volvieron a salir; los tres de TI002/55524 salieron el 30/09 y el 01/10 sin la materia en su grilla y no volvieron desde el 02/10. Se cerraron en <code>logs\ciclos_abiertos.jsonl</code> con su razón (copia previa en <code>ciclos_abiertos.jsonl.bak-20261006</code>).</td></tr>
+      <tr><td class="fuerte">Grupo DTA32/55598 sin curso en Moodle</td><td>Ya no sale en el reporte: apareció por última vez el 25/09 y no está en ninguno de los 6 reportes siguientes. Los demás grupos sin curso se siguen tipificando solos como "SIN CHECK DE MOODLE".</td></tr>
+      <tr><td class="fuerte">Reciclar lo que ya está verde</td><td>El caso del 25/09 fue atípico; no ocurre en el flujo normal. Se vuelve a revisar si se repite.</td></tr>
+      <tr><td class="fuerte">Revisión de desbordes</td><td>Apagada por decisión del responsable del proceso. Con el muestreo hacía 20 a 34 relecturas de ~18 s por día (6 a 10 min). Desde el 25/09 no detectó ningún desborde. Se puede volver a encender cambiando una línea (<code>COMPROBAR_DESBORDE</code> en <code>ejecutor_sinu.py</code>).</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>
+  <p>Fuentes: bitácoras <code>logs\dia_completo_*.log</code> (53 corridas), diarios <code>logs\resultados_etapa4*.jsonl</code> (4.070 unidades), código del proyecto y documentos <code>docs\inventario-software.md</code>, <code>docs\arquitectura-y-mejoras.md</code> y <code>docs\flujo-y-pendientes-20260926.md</code>.</p>
+  <p>Guía para instalarlo en otro computador: <a href="https://claude.ai/code/artifact/1b07b0ac-2acf-4a00-b811-369a194cc82c">Automatización Moodle–SINU en su computador</a>.</p>
+</footer>
+
+</div>
