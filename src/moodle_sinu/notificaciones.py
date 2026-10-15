@@ -54,8 +54,16 @@ SEG_TIMEOUT_RED = 20
 #: Titulos de los eventos de Calendar, tal como los pidio el dueno del
 #: proceso. Van SIN la fecha: el evento ya esta fechado por si mismo, y
 #: repetirla en el titulo solo gasta el ancho de la notificacion del movil.
-TITULO_CALENDAR_ALERTA = "⚠️ ALERTA: Tablero Power BI sin actualizar"
+TITULO_CALENDAR_ALERTA = "⚠️ Tablero Power BI no actualizado"
 TITULO_CALENDAR_EXITO = "✅ ÉXITO: Flujo Moodle vs SINU completado"
+
+#: Descripcion del evento de tablero viejo, literal (28/09/2026). El cuerpo
+#: completo -- con el texto CRITICO y el comando para relanzar -- sigue yendo
+#: por webhook y correo; en Calendar va solo esto.
+DESCRIPCION_CALENDAR_ALERTA = (
+    "El flujo Moodle-SINU se pausó en el Paso 1 porque la fecha del tablero "
+    "Power BI corresponde a un día anterior."
+)
 
 
 @dataclass
@@ -74,9 +82,16 @@ class Aviso:
     Existe porque en una notificacion de movil el titulo se corta, y ahi la
     fecha del asunto sobra."""
 
+    detalle_calendar: str = ""
+    """Descripcion para el evento de Calendar. Si esta vacia se usa `cuerpo`."""
+
     @property
     def titulo_para_calendar(self) -> str:
         return self.titulo_calendar or self.asunto
+
+    @property
+    def detalle_para_calendar(self) -> str:
+        return self.detalle_calendar or self.cuerpo
 
 
 @dataclass
@@ -121,6 +136,7 @@ def aviso_tablero_desactualizado(
     return Aviso(
         asunto=f"⚠️ ALERTA: Tablero Power BI sin actualizar - {dia:%d/%m/%Y}",
         titulo_calendar=TITULO_CALENDAR_ALERTA,
+        detalle_calendar=DESCRIPCION_CALENDAR_ALERTA,
         cuerpo=(
             # Las dos primeras frases estan especificadas palabra por palabra
             # por el dueno del proceso, en dos encargos distintos. Se conservan
@@ -185,23 +201,93 @@ def aviso_exito(resumen: str, *, hoy: date | None = None) -> Aviso:
     )
 
 
-def aviso_fallo(resumen: str, *, hoy: date | None = None) -> Aviso:
+def aviso_fallo(
+    resumen: str,
+    *,
+    hoy: date | None = None,
+    paso: str = "",
+    motivo: str = "",
+    intentos: str = "",
+    bitacora: str = "",
+) -> Aviso:
     """El flujo arranco y no termino bien.
 
     No estaba en el encargo, y hace falta: sin el, un fallo a mitad en modo
     desatendido se ve exactamente igual que un dia sin novedades.
+
+    `paso`, `motivo`, `intentos` y `bitacora` se anadieron el 23/09/2026. Hasta
+    entonces el cuerpo decia solo "El flujo se interrumpió antes de terminar",
+    y para saber DONDE habia caido tocaba abrir la bitacora en el equipo. El
+    aviso de las 9:02 llega al movil: si dice el paso y el motivo, se decide
+    desde ahi si hace falta correr al portatil o no.
     """
     dia = hoy or date.today()
+    donde = f" en {paso}" if paso else ""
+
+    lineas = [
+        f"El flujo arrancó pero no terminó bien. Lo hecho hasta el fallo "
+        f"queda marcado en el Sheet del día.",
+        "",
+    ]
+    if paso:
+        lineas.append(f"Se cayó en : {paso}")
+    if motivo:
+        lineas.append(f"Motivo     : {motivo}")
+    if intentos:
+        lineas.append(f"Intentos   : {intentos}")
+    if bitacora:
+        lineas.append(f"Bitácora   : {bitacora}")
+    if paso or motivo or intentos or bitacora:
+        lineas.append("")
+    lineas.append("Resumen:")
+    lineas.append(resumen)
+
     return Aviso(
-        asunto=f"❌ FALLO: Flujo de procesamiento incompleto - {dia:%d/%m/%Y}",
-        cuerpo=(
-            f"El flujo arrancó pero no terminó bien. Lo hecho hasta el fallo "
-            f"queda marcado en el Sheet del día.\n"
-            f"\n"
-            f"Resumen:\n"
-            f"{resumen}\n"
-        ),
+        asunto=f"❌ FALLO{donde} - {dia:%d/%m/%Y}",
+        cuerpo="\n".join(lineas) + "\n",
         critico=True,
+        # En el movil el titulo se corta: el paso va delante, la fecha sobra.
+        titulo_calendar=f"❌ FALLO{donde}" if paso else "",
+    )
+
+
+def aviso_congelado(
+    *,
+    paso: str,
+    motivo: str,
+    avance: str,
+    accion: str,
+    hora: str,
+    hoy: date | None = None,
+    bitacora: str = "",
+) -> Aviso:
+    """Una etapa llevaba 30 minutos sin dar senales y el vigia la corto.
+
+    Encargado el 14/10/2026, tras una manana entera congelada sin que nadie
+    lo supiera: el aviso tiene que decir POR QUE se detuvo, EN QUE PASO esta,
+    CUANTO LLEVA y CUANTO FALTA, y que se esta haciendo al respecto. Por eso
+    todo va tambien en el detalle de Calendar, que es lo que llega al movil.
+    """
+    dia = hoy or date.today()
+    corto = paso.split(" - ")[0] if paso else "el flujo"
+    lineas = [
+        f"El flujo se congeló y el vigía lo detectó a las {hora}.",
+        "",
+        f"Por qué  : {motivo}",
+        f"Dónde    : {paso}",
+        avance,
+        "",
+        f"Qué se hace: {accion}",
+    ]
+    if bitacora:
+        lineas += ["", f"Bitácora : {bitacora}"]
+    cuerpo = "\n".join(lineas) + "\n"
+    return Aviso(
+        asunto=f"⏸️ CONGELADO en {corto} - {dia:%d/%m/%Y} {hora}",
+        cuerpo=cuerpo,
+        critico=True,
+        titulo_calendar=f"⏸️ CONGELADO en {corto} ({hora})",
+        detalle_calendar=cuerpo,
     )
 
 
@@ -299,7 +385,7 @@ def enviar(aviso: Aviso, cfg) -> ResultadoEnvio:
         # que no abren navegador.
         from .aviso_calendar import crear_evento
 
-        rc = crear_evento(aviso.titulo_para_calendar, aviso.cuerpo, cfg)
+        rc = crear_evento(aviso.titulo_para_calendar, aviso.detalle_para_calendar, cfg)
         if rc.creado:
             r.canales.append("calendar")
             r.enviado = True

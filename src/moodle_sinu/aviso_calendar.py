@@ -43,6 +43,7 @@ personas; si el aviso tiene que llegar SIEMPRE, los dos canales conviven.
 from __future__ import annotations
 
 import logging
+import re
 import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -221,6 +222,19 @@ def _pulsar_guardar(page, plazo_ms: int) -> bool:
     return False
 
 
+def aguja_de(titulo: str) -> str:
+    """El trozo del titulo que se busca en la vista del dia.
+
+    Se busca por un trozo distintivo y no por el titulo entero: los emoji
+    pueden renderizarse de otra forma en la rejilla del dia. Se corta tras el
+    ':' si lo hay ("⚠️ ALERTA: ...") y, siempre, se quitan los simbolos del
+    principio: "⚠️ Tablero Power BI no actualizado" no lleva ':' y, sin esto,
+    la aguja empezaria por el emoji.
+    """
+    resto = titulo.split(":", 1)[-1]
+    return re.sub(r"^\W+", "", resto).strip()[:40] or titulo
+
+
 def _confirmar(page, titulo: str, plazo_ms: int) -> bool:
     """Comprueba que el evento existe DE VERDAD, en la VISTA DEL DIA.
 
@@ -237,9 +251,7 @@ def _confirmar(page, titulo: str, plazo_ms: int) -> bool:
 
     La vista del dia lee el calendario directamente y no depende del indice.
     """
-    # Se busca por un trozo distintivo y no por el titulo entero: los emoji
-    # pueden renderizarse de otra forma en la rejilla del dia.
-    aguja = titulo.split(":", 1)[-1].strip()[:40] or titulo
+    aguja = aguja_de(titulo)
     try:
         page.goto(URL_VISTA_DIA, timeout=plazo_ms)
         page.wait_for_timeout(int(SEG_ASENTAR * 1000))
@@ -335,9 +347,13 @@ def crear_evento(
         # Import local: este modulo lo cargan scripts que no abren navegador.
         from playwright.sync_api import sync_playwright
 
-        from .navegador import abrir_contexto
+        from .navegador import abrir_contexto, parar_playwright
 
-        with sync_playwright() as pw:
+        # start() y no `with`: si el navegador murio, SALIR del `with` lanza
+        # `InvalidStateError` y se lleva por delante un trabajo ya hecho.
+        # Ver `navegador.parar_playwright` (medido el 26/09/2026).
+        pw = sync_playwright().start()
+        try:
             # Con ventana: el aviso tiene que verse, y en esta suite headless ya
             # engano una vez con la subida a Drive.
             ctx, cerrar = abrir_contexto(pw, cfg, headless=False)
@@ -345,6 +361,8 @@ def crear_evento(
                 return _trabajo(ctx)
             finally:
                 cerrar()
+        finally:
+            parar_playwright(pw)
     except Exception as exc:  # noqa: BLE001
         # Un aviso que revienta se llevaria por delante justo el flujo al que
         # intenta avisar.

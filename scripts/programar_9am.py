@@ -47,11 +47,19 @@ PY = RAIZ / ".venv" / "Scripts" / "python.exe"
 ORQUESTADOR = "scripts/dia_completo.py"
 NOMBRE_POR_DEFECTO = "MoodleSinu-FlujoDiario"
 
+#: La tarea de reintento del tablero (28/09/2026): 30 min despues de la de las
+#: 9:00. Lanza el orquestador con --solo-si-pausado, asi que los dias en que las
+#: 9:00 salen bien no hace NADA -- y eso importa, porque a las 9:30 esa corrida
+#: esta en ISEF07 y una segunda encima seria otra exportacion, otro Sheet y dos
+#: navegadores sobre el mismo perfil.
+NOMBRE_REINTENTO_BI = "MoodleSinu-ReintentoBI"
+HORA_REINTENTO_BI = "09:30"
+
 #: 8 horas. El 07/09/2026 el dia entero tardo 148 min mas 27 de reintento, y el
-#: 08/09 se estimaron ~4 h para 79 unidades. A eso hay que sumarle la ventana de
-#: gracia del cerrojo (CERROJO_ESPERA_MIN, 90 min por defecto), asi que 6 h se
-#: quedaban demasiado justas: la tarea se cortaria a mitad de la etapa 4, que es
-#: la unica que escribe.
+#: 08/09 se estimaron ~4 h para 79 unidades, y 6 h se quedaban demasiado justas:
+#: la tarea se cortaria a mitad de la etapa 4, que es la unica que escribe. (La
+#: ventana de gracia de 90 min del cerrojo, que tambien sumaba, se quito el
+#: 28/09/2026.)
 LIMITE_EJECUCION = "PT8H"
 
 RX_HORA = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
@@ -143,8 +151,23 @@ def _disparador_xml(arranque: datetime, una_vez: bool) -> str:
     )
 
 
+def argumentos_de(*, simulacion: bool, reintento_bi: bool) -> str:
+    """La linea de argumentos del orquestador para la tarea."""
+    partes = [ORQUESTADOR]
+    if not simulacion:
+        partes.append("--ejecutar-de-verdad")
+    if reintento_bi:
+        partes.append("--solo-si-pausado")
+    return " ".join(partes)
+
+
 def construir_xml(
-    hora: str, *, simulacion: bool, descripcion: str, una_vez: bool = False
+    hora: str,
+    *,
+    simulacion: bool,
+    descripcion: str,
+    una_vez: bool = False,
+    reintento_bi: bool = False,
 ) -> str:
     """El XML de la tarea.
 
@@ -165,7 +188,7 @@ def construir_xml(
         usuario. Con S4U ("ejecutar aunque el usuario no haya iniciado
         sesion") el navegador no tiene escritorio y la subida se cae.
     """
-    argumentos = ORQUESTADOR if simulacion else f"{ORQUESTADOR} --ejecutar-de-verdad"
+    argumentos = argumentos_de(simulacion=simulacion, reintento_bi=reintento_bi)
     usuario = os.environ.get("USERNAME", "")
     dominio = os.environ.get("USERDOMAIN", "")
     quien = f"{dominio}\\{usuario}" if dominio else usuario
@@ -232,8 +255,20 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("--hora", default="09:00", help="Hora de disparo, HH:mm.")
-    p.add_argument("--nombre", default=NOMBRE_POR_DEFECTO, help="Nombre de la tarea.")
+    p.add_argument(
+        "--hora", default=None, help="Hora de disparo, HH:mm (09:00; 09:30 con --reintento-bi)."
+    )
+    p.add_argument("--nombre", default=None, help="Nombre de la tarea.")
+    p.add_argument(
+        "--reintento-bi",
+        action="store_true",
+        help=(
+            "Registra la tarea de REINTENTO del tablero (por defecto 09:30, "
+            f"'{NOMBRE_REINTENTO_BI}'): lanza el orquestador con --solo-si-pausado, "
+            "asi que solo hace algo si la corrida de las 9:00 dejo el dia en "
+            "PAUSADO_BI_VIEJO."
+        ),
+    )
     p.add_argument("--quitar", action="store_true", help="Borra la tarea.")
     p.add_argument(
         "--simulacion",
@@ -257,6 +292,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Imprime lo que haria y no toca el Programador.",
     )
     args = p.parse_args(argv)
+    if args.hora is None:
+        args.hora = HORA_REINTENTO_BI if args.reintento_bi else "09:00"
+    if args.nombre is None:
+        args.nombre = NOMBRE_REINTENTO_BI if args.reintento_bi else NOMBRE_POR_DEFECTO
 
     print("=" * 72)
 
@@ -294,20 +333,31 @@ def main(argv: list[str] | None = None) -> int:
 
     _avisar_si_no_hay_canal()
 
-    descripcion = (
-        "Flujo diario Moodle-SINU. Comprueba que el tablero de Power BI se "
-        "actualizo hoy; si no, avisa y no exporta. Ver el README del proyecto."
-    )
+    if args.reintento_bi:
+        descripcion = (
+            "Reintento del flujo Moodle-SINU. Solo actua si la corrida de las "
+            "9:00 dejo el dia PAUSADO_BI_VIEJO (tablero de Power BI sin "
+            "actualizar); si no, sale sin tocar nada. Ver el README del proyecto."
+        )
+    else:
+        descripcion = (
+            "Flujo diario Moodle-SINU. Comprueba que el tablero de Power BI se "
+            "actualizo hoy; si no, avisa y no exporta. Ver el README del proyecto."
+        )
     xml = construir_xml(
         args.hora,
         simulacion=args.simulacion,
         descripcion=descripcion,
         una_vez=args.una_vez,
+        reintento_bi=args.reintento_bi,
     )
 
     print()
     print("La tarea ejecutara:")
-    print(f"  {PY} {ORQUESTADOR}" + ("" if args.simulacion else " --ejecutar-de-verdad"))
+    print(
+        f"  {PY} "
+        + argumentos_de(simulacion=args.simulacion, reintento_bi=args.reintento_bi)
+    )
     print(f"  desde: {RAIZ}")
     print()
     if args.simulacion:
@@ -366,7 +416,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f'  schtasks /Run /TN "{args.nombre}"')
     print()
     print("Quitarla:")
-    print("  python scripts/programar_9am.py --quitar")
+    print(
+        "  python scripts/programar_9am.py --quitar"
+        + (" --reintento-bi" if args.reintento_bi else "")
+    )
     print()
     print("IMPORTANTE: el equipo tiene que estar encendido y con la sesion de")
     print(f"{os.environ.get('USERNAME', '')} iniciada. El flujo abre Chrome con")

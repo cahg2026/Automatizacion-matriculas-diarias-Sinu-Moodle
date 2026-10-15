@@ -173,8 +173,55 @@ class TestCalendar:
     def test_los_titulos_son_los_pedidos(self):
         alerta = n.aviso_tablero_desactualizado("x", hoy=HOY)
         exito = n.aviso_exito("x", hoy=HOY)
-        assert alerta.titulo_para_calendar == "⚠️ ALERTA: Tablero Power BI sin actualizar"
+        assert alerta.titulo_para_calendar == "⚠️ Tablero Power BI no actualizado"
         assert exito.titulo_para_calendar == "✅ ÉXITO: Flujo Moodle vs SINU completado"
+
+    def test_la_descripcion_del_tablero_viejo_es_la_pedida(self):
+        alerta = n.aviso_tablero_desactualizado("x", hoy=HOY)
+        assert alerta.detalle_para_calendar == (
+            "El flujo Moodle-SINU se pausó en el Paso 1 porque la fecha del "
+            "tablero Power BI corresponde a un día anterior."
+        )
+        # Webhook y correo siguen llevando el cuerpo completo.
+        assert n.TEXTO_CRITICO_DESACTUALIZADO in alerta.cuerpo
+
+    def test_sin_descripcion_propia_se_usa_el_cuerpo(self):
+        exito = n.aviso_exito("54/54 unidades", hoy=HOY)
+        assert exito.detalle_para_calendar == exito.cuerpo
+
+    def test_a_calendar_va_la_descripcion_corta(self, monkeypatch):
+        visto = {}
+
+        def falso(titulo, detalles, cfg, **kw):
+            visto["titulo"], visto["detalles"] = titulo, detalles
+            from moodle_sinu.aviso_calendar import ResultadoCalendar
+
+            return ResultadoCalendar(creado=True, detalle="ok")
+
+        import moodle_sinu.aviso_calendar as ac
+
+        monkeypatch.setattr(ac, "crear_evento", falso)
+        n.enviar(
+            n.aviso_tablero_desactualizado("x", hoy=HOY),
+            Config(notificar_calendar=True),
+        )
+        assert visto["titulo"] == "⚠️ Tablero Power BI no actualizado"
+        assert visto["detalles"] == n.DESCRIPCION_CALENDAR_ALERTA
+
+    @pytest.mark.parametrize(
+        "titulo, aguja",
+        [
+            ("⚠️ Tablero Power BI no actualizado", "Tablero Power BI no actualizado"),
+            ("✅ ÉXITO: Flujo Moodle vs SINU completado", "Flujo Moodle vs SINU completado"),
+            ("❌ FALLO en PASO 3/6", "FALLO en PASO 3/6"),
+        ],
+    )
+    def test_la_confirmacion_busca_sin_el_emoji(self, titulo, aguja):
+        """Sin ':' en el titulo nuevo, la aguja empezaba por el emoji, que la
+        rejilla del dia puede pintar de otra forma: falso 'no aparece'."""
+        from moodle_sinu.aviso_calendar import aguja_de
+
+        assert aguja_de(titulo) == aguja
 
     def test_el_titulo_de_calendar_no_lleva_fecha(self):
         """El evento ya esta fechado por si mismo; en la notificacion del movil
@@ -317,3 +364,44 @@ class TestListaDeDestinatarios:
 
         monkeypatch.delenv("X", raising=False)
         assert _lista("X") == ()
+
+
+class TestAvisoFalloDetallado:
+    """El aviso llega al movil a las 9:02. Si no dice donde se cayo, hay que
+    abrir la bitacora en el equipo para saber si corre prisa o no."""
+
+    def test_el_asunto_nombra_el_paso(self):
+        a = n.aviso_fallo(
+            "sin novedades",
+            hoy=HOY,
+            paso="PASO 2/6 - Power BI: descarga del tablero",
+            motivo="Download.save_as: browser has been closed",
+        )
+        assert "PASO 2/6" in a.asunto
+
+    def test_el_cuerpo_lleva_paso_motivo_intentos_y_bitacora(self):
+        a = n.aviso_fallo(
+            "sin novedades",
+            hoy=HOY,
+            paso="PASO 2/6 - Power BI: descarga del tablero",
+            motivo="Download.save_as: browser has been closed",
+            intentos="5 de 5",
+            bitacora=r"C:\logs\dia_completo.log",
+        )
+        assert "PASO 2/6" in a.cuerpo
+        assert "Download.save_as" in a.cuerpo
+        assert "5 de 5" in a.cuerpo
+        assert "dia_completo.log" in a.cuerpo
+
+    def test_el_titulo_de_calendar_se_ahorra_la_fecha(self):
+        """En la notificacion del movil el titulo se corta: el paso importa
+        mas que una fecha que ya es la de hoy."""
+        a = n.aviso_fallo("x", hoy=HOY, paso="PASO 3/6 - Subida del Sheet")
+        assert "PASO 3/6" in a.titulo_para_calendar
+        assert "2026" not in a.titulo_para_calendar
+
+    def test_sin_detalle_sigue_siendo_un_aviso_valido(self):
+        """La llamada antigua, sin paso ni motivo, no debe romperse."""
+        a = n.aviso_fallo("2 periodos fallaron", hoy=HOY)
+        assert a.critico
+        assert "2 periodos fallaron" in a.cuerpo

@@ -128,6 +128,25 @@ class TestElXml:
         xml = pg.construir_xml("09:00", simulacion=True, descripcion="x")
         assert "--ejecutar-de-verdad" not in xml
 
+    def test_el_diario_no_lleva_solo_si_pausado(self):
+        xml = pg.construir_xml("09:00", simulacion=False, descripcion="x")
+        assert "--solo-si-pausado" not in xml
+
+    def test_el_reintento_bi_solo_actua_si_hubo_pausa(self):
+        """Sin --solo-si-pausado, los dias buenos la tarea de las 9:30 lanzaria
+        una segunda corrida completa encima de la que ya esta en ISEF07."""
+        xml = pg.construir_xml(
+            "09:30", simulacion=False, descripcion="x", reintento_bi=True
+        )
+        assert (
+            "scripts/dia_completo.py --ejecutar-de-verdad --solo-si-pausado" in xml
+        )
+        assert "<Monday />" in xml  # tambien de lunes a viernes
+
+    def test_el_reintento_bi_tiene_su_nombre_y_su_hora(self):
+        assert pg.NOMBRE_REINTENTO_BI != pg.NOMBRE_POR_DEFECTO
+        assert pg.HORA_REINTENTO_BI == "09:30"
+
     def test_el_limite_cubre_ventana_mas_dia(self):
         """90 min de ventana + ~4 h de dia no caben en 6 h con holgura."""
         assert pg.LIMITE_EJECUCION == "PT8H"
