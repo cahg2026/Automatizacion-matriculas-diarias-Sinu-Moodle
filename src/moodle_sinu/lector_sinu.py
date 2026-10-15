@@ -75,6 +75,11 @@ class LecturaEstudiante:
 
     segundos: float = 0.0
 
+    pie: tuple[int, int, int] | None = None
+    """El pie de la grilla Grupos ("1 a 7 de 8"), o None si la grilla NO
+    confirmo su carga en el plazo. Es lo que distingue "este estudiante no tiene
+    asignaturas" (pie "0 a 0 de 0") de "la pantalla no contesto" (None)."""
+
 
 def _ms(segundos: float) -> float:
     return segundos * 1000
@@ -731,6 +736,21 @@ def limpiar_filtro_de_materia(page: Page, cfg: Config) -> None:
     esperar_grilla_cargada(page, cfg)
 
 
+def _vaciar_filtro_de_materia_si_tiene_valor(page: Page, cfg: Config) -> bool:
+    """Vacia el filtro de materia si quedo escrito. Devuelve si lo vacio.
+
+    Si el filtro no esta en pantalla no hay nada que vaciar: no es un error.
+    """
+    filtro = page.locator(sel.CSS_FILTRO_MATERIA)
+    if filtro.count() == 0:
+        return False
+    if not filtro.first.input_value().strip():
+        return False
+    log.info("El filtro de materia seguia puesto de la accion anterior; se vacia.")
+    limpiar_filtro_de_materia(page, cfg)
+    return True
+
+
 def leer_estudiante(
     page: Page, cfg: Config, identificacion: str
 ) -> LecturaEstudiante:
@@ -816,10 +836,21 @@ def leer_estudiante(
     # Sin esta espera se leia la grilla a medio cargar y salia vacia: cuatro
     # diagnosticos del 01/09/2026 culparon a los selectores por esto.
     pie = esperar_grilla_cargada(page, cfg)
+
+    # El filtro de materia SOBREVIVE de una lectura a otra. Tras vincular una
+    # materia la grilla se queda acotada a ella, y hasta el 06/10/2026 solo lo
+    # vaciaba la comprobacion de desborde. Al apagarla, la siguiente lectura
+    # del mismo estudiante veia 1 asignatura en vez de 8, y el estudiante
+    # SIGUIENTE heredaba el filtro y veia 0 (30000002 heredo ESP100). Las 18
+    # "materia-no-esta-en-sinu" del 07/10/2026 fueron esto. Una lectura "completa"
+    # tiene que serlo de verdad, venga de donde venga la grilla.
+    if _vaciar_filtro_de_materia_si_tiene_valor(page, cfg):
+        pie = esperar_grilla_cargada(page, cfg)
+
     if pie is not None:
         log.info("Grilla Grupos cargada: %s a %s de %s.", *pie)
 
-    lectura = LecturaEstudiante(identificacion=identificacion)
+    lectura = LecturaEstudiante(identificacion=identificacion, pie=pie)
     lectura.grupos, lectura.ilegibles = leer_filas_grupos(page)
     lectura.segundos = round(time.monotonic() - inicio, 1)
     log.info(

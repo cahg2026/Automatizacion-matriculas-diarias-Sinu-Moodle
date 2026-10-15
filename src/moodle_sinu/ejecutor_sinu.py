@@ -42,7 +42,9 @@ parada manual), el estudiante acaba peor que al empezar. De ahi:
   apunte tras vincular. Un apunte sin cerrar es una materia que hay que revisar
   a mano, y sobrevive a que el proceso muera. El apunte lleva la materia: un
   ciclo abierto es de (cedula, materia), no del estudiante entero.
-- El vincular posterior se reintenta antes de rendirse.
+- El vincular posterior se ejecuta UNA vez y su check se sondea. Si no vuelve,
+  la fila se escala en el acto en vez de reintentarse (regla del 25/09/2026,
+  ver `INTENTOS_POR_UNIDAD`).
 - Al terminar, el CLI enumera los ciclos que quedaron abiertos.
 
 El check se confirma releyendo, no por el dialogo (03/09/2026)
@@ -103,7 +105,7 @@ from .clasificador_sinu import FilaGrupoSinu
 from .config import DIR_LOGS, Config
 from .constantes_sinu import (
     ACTIVIDAD_VINCULACION,
-    INTENTOS_HASTA_ESCALAR,
+    INTENTOS_POR_UNIDAD,
     MODULOS_DE_ESCALADO,
     SEG_EJECUCION_VINCULACION,
     TIMEOUT_EJECUCION_ISEF07_SEG,
@@ -117,11 +119,16 @@ log = logging.getLogger(__name__)
 #: Registro persistente de ciclos desvincular->vincular a medio hacer.
 RUTA_CICLOS_ABIERTOS = DIR_LOGS / "ciclos_abiertos.jsonl"
 
-#: Reintentos del vincular que cierra un ciclo. Mas alto que en el resto del
-#: proyecto a proposito: si esto falla, un estudiante queda desvinculado.
-#: Es el mismo numero que `INTENTOS_HASTA_ESCALAR`, y no por casualidad: agotar
-#: los intentos de vincular ES lo que manda el caso a ISEF05/PACF50.
-REINTENTOS_VINCULAR_TRAS_DESVINCULAR = INTENTOS_HASTA_ESCALAR
+#: Intentos del vincular que cierra un ciclo. UNO, igual que el resto.
+#:
+#: Aqui habia 3 "a proposito", con este argumento: si el vincular falla, un
+#: estudiante queda desvinculado, asi que conviene insistir mas que en ningun
+#: otro sitio. El argumento es razonable y aun asi no se sostiene con lo medido:
+#: cuando el check no vuelve, no vuelve en ninguno de los tres intentos --
+#: porque la causa es del GRUPO, no del intento. Lo unico que aportaban el 2.o y
+#: el 3.o era retrasar ~5 minutos el aviso de que ese estudiante hay que
+#: repararlo a mano. El aviso sigue saliendo igual, y antes.
+REINTENTOS_VINCULAR_TRAS_DESVINCULAR = INTENTOS_POR_UNIDAD
 
 #: Casos que hay que confirmar en ISEF05 y PACF50 y anotar en el Sheet. Se
 #: escribe en disco por el mismo motivo que `ciclos_abiertos.jsonl`: tiene que
@@ -136,6 +143,15 @@ MOTIVO_NO_VERIFICABLE = "check-no-verificable"
 
 #: ISEF07 no dejo ni lanzar la accion.
 MOTIVO_NO_PERMITE_VINCULAR = "isef07-no-permite-vincular"
+
+#: La fila no se intento: su shortname (MATERIA/GRUPO) ya se bloqueo en esta
+#: corrida porque otro estudiante del mismo grupo agoto su unico intento.
+#:
+#: Se distingue de los tres motivos de arriba porque los tres describen algo que
+#: le paso a ESA fila en ISEF07, y este describe algo que le paso a otra. Quien
+#: valide en ISEF05/PACF50 tiene que saberlo: si el grupo resulta sano, estas
+#: filas no necesitan reparacion, solo volver a correr.
+MOTIVO_SHORTNAME_BLOQUEADO = "shortname-bloqueado-en-la-corrida"
 
 #: Cuanto se sondea el check antes de darlo por ausente. MEDIDO el 03/09/2026:
 #: una lectura a los 17 s del dialogo dio un falso negativo y el check aparecio
@@ -155,11 +171,81 @@ SEG_ENTRE_SONDEOS = 5
 #: nadie lo ha comprobado contra el sistema. Lo que SI esta medido es que sin
 #: acotar la accion alcanza todas las asignaturas.
 #:
-#: Cuesta una lectura de grilla (~15 s) por escritura. Se puede poner en False
-#: cuando el confinamiento este confirmado en una corrida supervisada -- y no
-#: antes: sin esta guarda, si el filtro no confinara nada, el codigo pareceria
-#: trabajar por materia y haria el mismo dano de forma invisible.
-COMPROBAR_DESBORDE = True
+#: MEDIDO el 25/09/2026, y cuesta mas de lo que decia aqui: la relectura no es
+#: de la grilla, es del ESTUDIANTE ENTERO, y son 18 s. Dos escrituras por
+#: reciclado hacen 37 s por unidad -- el 27% de los 137 s que dura una unidad, y
+#: 4,4 h sobre las 432 pendientes de hoy. Las tres lecturas de estudiante por
+#: unidad que aparecen en el log son esta guarda: solo una es necesaria.
+#:
+#: APAGADA el 06/10/2026 por decision del dueno del proceso. Desde el muestreo
+#: del 25/09 hasta esa fecha no se vio ni un desborde, y costaba 20-34
+#: relecturas de ~18 s por dia (6-10 min). Lo que se pierde, dicho claro: si un
+#: cambio de SINU hiciera que el filtro de COD_MATERIA dejara de confinar la
+#: accion, nada lo detectaria y se reciclarian materias fuera del reporte.
+#: Para volver a encenderla basta con poner True; el muestreo sigue intacto.
+COMPROBAR_DESBORDE = False
+
+#: MUESTREO (25/09/2026). Escrituras del arranque que se comprueban SIEMPRE.
+#:
+#: Apagar la guarda del todo era la unica alternativa que habia a pagarla entera,
+#: y las dos son malas. El muestreo sale de mirar QUE detecta la guarda: no un
+#: desborde esporadico, sino que el filtro de COD_MATERIA **no confina nada** --
+#: una propiedad de la pantalla, no de la fila. Si eso fuera cierto, se ve en la
+#: primera escritura, no en la centesima. De hecho el dia que ocurrio de verdad
+#: (03/09/2026) se desbordaron las 5 unidades, no una.
+#:
+#: Cinco y no una: una sola comprobacion buena podria serlo por casualidad -- la
+#: unidad cuyo estudiante solo tiene esa asignatura no puede desbordarse aunque
+#: el filtro no confine, porque no hay nada mas que tocar.
+MUESTRA_INICIAL_DESBORDE = 5
+
+#: Despues de la muestra inicial, 1 de cada N escrituras. No es simetria: es que
+#: la pantalla puede cambiar a mitad de corrida (una sesion que caduca y vuelve,
+#: un despliegue de SINU) y una guarda que solo mira al principio no se enteraria.
+#:
+#: **Lo que esto empeora, dicho claro:** entre dos muestras pueden pasar hasta N
+#: escrituras sin comprobar. Si el filtro dejara de confinar justo despues de una
+#: muestra, se desbordarian hasta N unidades antes de que nadie lo viera -- con
+#: la guarda entera serian 0. Se acepta porque el fallo que cubre es sistemico y
+#: no intermitente, y porque el coste de cubrirlo entero son 4,4 h por corrida.
+#: Si alguna vez se ve UN desborde real, hay que volver a `MUESTREO = False`.
+COMPROBAR_DESBORDE_CADA = 25
+
+#: False = comprobar TODAS las escrituras, como hasta el 25/09/2026. Es el
+#: interruptor que hay que tocar para volver atras sin pensar en los numeros.
+MUESTREO_DESBORDE = True
+
+#: Escrituras comprobadas en esta corrida. Lo reinicia el CLI al empezar.
+_escrituras_vistas = 0
+
+
+def reiniciar_muestreo_desborde() -> None:
+    """Vuelve a empezar la muestra. El CLI lo llama al arrancar cada lote.
+
+    Sin esto, un proceso que tratara varios lotes seguidos muestrearia de verdad
+    solo el primero, y cada lote fija su propio periodo y su propia pantalla --
+    que es justo el estado del que la guarda desconfia.
+    """
+    global _escrituras_vistas
+    _escrituras_vistas = 0
+
+
+def toca_comprobar_desborde() -> bool:
+    """Si la siguiente escritura entra en la muestra. Cuenta al preguntar.
+
+    Funcion aparte y pura-ish (solo toca el contador) para poder probar la
+    cadencia sin navegador: es una decision de muestreo, y equivocarse en ella
+    no da error, da silencio.
+    """
+    global _escrituras_vistas
+    if not COMPROBAR_DESBORDE:
+        return False
+    _escrituras_vistas += 1
+    if not MUESTREO_DESBORDE:
+        return True
+    if _escrituras_vistas <= MUESTRA_INICIAL_DESBORDE:
+        return True
+    return (_escrituras_vistas - MUESTRA_INICIAL_DESBORDE) % COMPROBAR_DESBORDE_CADA == 0
 
 
 class TipoSecuencia(Enum):
@@ -349,13 +435,21 @@ def _apuntar_ciclo(
         fh.flush()
 
 
-def _apuntar_escalado(
+def apuntar_escalado(
     identificacion: str,
     cod_periodo: str,
     motivo: str,
     materias: list[str],
 ) -> None:
-    """Anota un caso que hay que confirmar en ISEF05/PACF50 y llevar al Sheet."""
+    """Anota un caso que hay que confirmar en ISEF05/PACF50 y llevar al Sheet.
+
+    Es publica porque desde el 25/09/2026 el CLI tambien escala filas que este
+    modulo nunca llega a ver: las del cortocircuito por shortname, que se cierran
+    sin abrir al estudiante porque otro estudiante del MISMO grupo ya escalo.
+    Ese caso tiene que aparecer en el mismo diario que los demas -- si el
+    cortocircuito ahorrara tiempo a cambio de hacer invisibles sus filas, estaria
+    escondiendo justo lo que hay que validar a mano.
+    """
     RUTA_ESCALADO.parent.mkdir(parents=True, exist_ok=True)
     apunte = {
         "momento": datetime.now().isoformat(timespec="seconds"),
@@ -363,12 +457,20 @@ def _apuntar_escalado(
         "cod_periodo": cod_periodo,
         "motivo": motivo,
         "materias_sin_check": materias,
+        # El grupo al que pertenece el caso, repetido aparte de la lista para
+        # poder agrupar por shortname sin desarmar `materias_sin_check`. Es la
+        # clave del cortocircuito: los escalados se cuentan POR GRUPO.
+        "objetivo": materias[0] if materias else "",
         "modulos_a_consultar": list(MODULOS_DE_ESCALADO),
         "resuelto": False,
     }
     with RUTA_ESCALADO.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(apunte, ensure_ascii=False) + "\n")
         fh.flush()
+
+
+#: Nombre anterior, conservado porque las pruebas y los scripts lo usan.
+_apuntar_escalado = apuntar_escalado
 
 
 def escalados_pendientes() -> list[dict]:
@@ -851,14 +953,24 @@ def _exigir_sin_desborde(
     trabajar por materia y seguiria reciclando el estudiante entero, que es peor
     que el estado anterior: el mismo dano, ahora invisible.
 
+    Desde el 25/09/2026 **no se comprueba en cada escritura, sino por muestreo**
+    (`toca_comprobar_desborde`). Cuando la escritura cae fuera de la muestra esta
+    funcion no hace nada -- ni relee, ni puede levantar `AccionSeDesbordo`.
+
     Raises:
         AccionSeDesbordo: si alguna otra asignatura cambio de estado.
         ErrorEjecucionSinu: si no se pudo releer la grilla completa.
     """
-    if not COMPROBAR_DESBORDE:
+    objetivo = f"{cod_materia}/{num_grupo}" if num_grupo else cod_materia
+
+    if not toca_comprobar_desborde():
+        log.debug(
+            "%s / %s: escritura fuera de la muestra de desborde, no se relee.",
+            identificacion,
+            objetivo,
+        )
         return
 
-    objetivo = f"{cod_materia}/{num_grupo}" if num_grupo else cod_materia
     try:
         despues = _estado_de(releer_todas())
     except Exception as exc:  # noqa: BLE001
@@ -888,7 +1000,7 @@ def _exigir_sin_desborde(
     )
 
 
-def _vincular_hasta_confirmar(
+def _vincular_y_confirmar(
     page: Page,
     cfg: Config,
     *,
@@ -899,63 +1011,65 @@ def _vincular_hasta_confirmar(
     cod_periodo: str,
     resultado: ResultadoEjecucion,
 ) -> bool:
-    """Vincula la materia y sondea su check, reintentando. True si quedo puesto.
+    """Vincula la materia UNA VEZ y sondea su check. True si quedo puesto.
 
     False significa que ISEF07 ejecuto el vincular y el check no aparecio: el
-    caso que se escala a ISEF05/PACF50.
+    caso que se escala a ISEF05/PACF50, **ya**, sin volver a intentarlo.
+
+    Un solo intento, por la regla del 25/09/2026 (ver `INTENTOS_POR_UNIDAD`).
+    El bucle que habia aqui daba tres pasadas, cada una con su ejecucion en
+    ISEF07 y su sondeo de 90 s, y en ninguna corrida medida el 2.o o el 3.er
+    intento cambio el desenlace: cuando el check no vuelve es porque el GRUPO no
+    lo permite, y eso no depende de cuantas veces se pulse.
+
+    El sondeo del unico intento SI se mantiene. No es un reintento de la
+    escritura -- no vuelve a pulsar nada -- sino la relectura de la grilla que
+    confirma el resultado de la escritura que ya se hizo, y sale antes en cuanto
+    el check aparece. Es lo que evita el falso negativo medido el 03/09/2026.
 
     Raises:
-        ErrorEjecucionSinu: si ni un solo intento llego a ejecutarse, o si la
-            grilla no se pudo releer.
+        ErrorEjecucionSinu: si el intento no llego a ejecutarse, o si la grilla
+            no se pudo releer.
     """
-    ultimo: Exception | None = None
-
-    for intento in range(1, INTENTOS_HASTA_ESCALAR + 1):
-        try:
-            _ejecutar_una(page, cfg, sesc.OPCION_VINCULAR)
-            resultado.acciones_ejecutadas.append(sesc.OPCION_VINCULAR)
-        except ErrorEjecucionSinu as exc:
-            ultimo = exc
-            log.error(
-                "Fallo el vincular de %s / %s (%d/%d): %s",
-                identificacion,
-                cod_materia,
-                intento,
-                INTENTOS_HASTA_ESCALAR,
-                exc,
-            )
-            page.wait_for_timeout(_ms(SEG_ENTRE_SONDEOS))
-            continue
-
-        if not VERIFICAR_CHECK_VINCULADO:
-            return True
-
-        _, confirmado = _sondear_check(
-            page,
-            releer_materia,
-            cod_materia=cod_materia,
-            num_grupo=num_grupo,
-            esperado=True,
-            identificacion=identificacion,
-            cod_periodo=cod_periodo,
-        )
-        if confirmado:
-            resultado.vinculadas_despues = 1
-            return True
-
+    try:
+        _ejecutar_una(page, cfg, sesc.OPCION_VINCULAR)
+        resultado.acciones_ejecutadas.append(sesc.OPCION_VINCULAR)
+    except ErrorEjecucionSinu as exc:
+        # No se llego a escribir, asi que no hay nada que comprobar. Sube tal
+        # cual: quien llama decide si es un escalado o un ciclo abierto, que
+        # depende de si antes hubo un desvincular.
         log.error(
-            "%s / %s: se ejecuto el vincular y el check sigue SIN aparecer tras "
-            "%ss de sondeo (intento %d/%d).",
+            "Fallo el unico intento de vincular de %s / %s: %s",
             identificacion,
             cod_materia,
-            SEG_SONDEO_CHECK,
-            intento,
-            INTENTOS_HASTA_ESCALAR,
+            exc,
         )
+        raise
 
-    if ultimo is not None and not resultado.acciones_ejecutadas:
-        # Nunca se llego a ejecutar nada, asi que no hay nada que comprobar.
-        raise ultimo
+    if not VERIFICAR_CHECK_VINCULADO:
+        return True
+
+    _, confirmado = _sondear_check(
+        page,
+        releer_materia,
+        cod_materia=cod_materia,
+        num_grupo=num_grupo,
+        esperado=True,
+        identificacion=identificacion,
+        cod_periodo=cod_periodo,
+    )
+    if confirmado:
+        resultado.vinculadas_despues = 1
+        return True
+
+    log.error(
+        "%s / %s: se ejecuto el vincular y el check no aparecio tras %ss de "
+        "sondeo. Intento unico: se escala a %s sin reintentar.",
+        identificacion,
+        cod_materia,
+        SEG_SONDEO_CHECK,
+        "/".join(m.upper() for m in MODULOS_DE_ESCALADO),
+    )
     return False
 
 
@@ -1046,7 +1160,7 @@ def ejecutar_materia(
 
     if secuencia is TipoSecuencia.SOLO_VINCULAR:
         try:
-            confirmado = _vincular_hasta_confirmar(
+            confirmado = _vincular_y_confirmar(
                 page,
                 cfg,
                 releer_materia=releer_materia,
@@ -1159,7 +1273,7 @@ def ejecutar_materia(
     )
 
     try:
-        confirmado = _vincular_hasta_confirmar(
+        confirmado = _vincular_y_confirmar(
             page,
             cfg,
             releer_materia=releer_materia,
@@ -1178,7 +1292,7 @@ def ejecutar_materia(
         raise CicloAbierto(
             f"{identificacion} / {objetivo} ({cod_periodo}) PUEDE HABER QUEDADO "
             f"DESVINCULADA: se desvinculo y el vincular no se pudo completar ni "
-            f"confirmar en {INTENTOS_HASTA_ESCALAR} intentos. Ultimo error: {exc}. "
+            f"confirmar en el unico intento que permite la regla. Error: {exc}. "
             f"Hay que vincularla A MANO en ISEF07. Apuntado en "
             f"{RUTA_CICLOS_ABIERTOS}."
         ) from exc
@@ -1201,8 +1315,8 @@ def ejecutar_materia(
         _apuntar_escalado(identificacion, cod_periodo, MOTIVO_SIN_CHECK, [objetivo])
         raise CicloAbierto(
             f"{identificacion} / {objetivo} ({cod_periodo}) QUEDO DESVINCULADA: "
-            f"venia con check, se reciclo y el check no volvio tras "
-            f"{INTENTOS_HASTA_ESCALAR} intentos. Hay que vincularla A MANO en "
+            f"venia con check, se reciclo y el check no volvio en el unico "
+            f"intento que permite la regla. Hay que vincularla A MANO en "
             f"ISEF07 y validar el check en "
             f"{'/'.join(MODULOS_DE_ESCALADO).upper()}. Apuntado en "
             f"{RUTA_CICLOS_ABIERTOS}."

@@ -96,6 +96,15 @@ IDS_IFRAMES_INFRAESTRUCTURA = ("__gwt_historyFrame", "basf00")
 # Los codigos van en MINUSCULA. Buscarlos en mayuscula fue lo que hizo fallar
 # las primeras sondas.
 
+#: Donde vive la tabla de modulos. VERIFICADO el 26/09/2026 abriendo una pestana
+#: nueva: en la URL base (`.../sgacampus/`) el menu NO se pinta -- no hay ni un
+#: codigo de modulo en el DOM --, y en `.../sgacampus/#home` estan los 31.
+#:
+#: Importa porque una pestana nueva no hereda la ruta, solo la sesion: hay que
+#: llevarla a #home explicitamente o no encuentra nada que pulsar.
+HASH_HOME = "#home"
+
+
 #: Al abrir un modulo, la URL pasa a `.../sgacampus/#<codigo>`. Es la senal
 #: inequivoca de que se entro, igual que en Drive lo es el id de la carpeta.
 def hash_de_modulo(codigo: str) -> str:

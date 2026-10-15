@@ -31,6 +31,7 @@ import csv
 import io
 import logging
 import re
+import time
 
 from playwright.sync_api import Error as ErrorPlaywright, Page
 
@@ -110,14 +111,35 @@ def url_export_csv(url_sheet: str) -> str:
     return PLANTILLA_EXPORT_CSV.format(id=id_doc.group(1), gid=gid.group(1) if gid else "0")
 
 
+#: Esperas entre intentos de la descarga, en segundos: ~3 min de gracia en total.
+#: El 30/09/2026 la descarga cayo dos veces (09:03 y 14:21) con "socket
+#: disconnected before secure TLS connection" en el salto a
+#: googleusercontent.com, y sin reintento cada caida costo el periodo entero.
+ESPERAS_REINTENTO_CSV_SEG = (15, 30, 45, 90)
+
+
 def _descargar_csv(pagina_sheet: Page, cfg: Config) -> str:
-    """Descarga el Sheet en CSV con las cookies de esa misma pestana."""
+    """Descarga el Sheet en CSV con las cookies de esa misma pestana.
+
+    Solo se reintenta el fallo de RED. Un HTTP 401/403 o la pagina de login
+    no se arreglan esperando, y se informan a la primera.
+    """
     url = url_export_csv(pagina_sheet.url)
     log.debug("Exportando el Sheet a CSV: %s", url)
-    try:
-        respuesta = pagina_sheet.request.get(url, timeout=cfg.timeout_operacion_seg * 1000)
-    except ErrorPlaywright as exc:
-        raise ErrorPeriodoSheet(f"No se pudo descargar el Sheet en CSV: {exc}") from exc
+    for intento, espera in enumerate((*ESPERAS_REINTENTO_CSV_SEG, None), start=1):
+        try:
+            respuesta = pagina_sheet.request.get(url, timeout=cfg.timeout_operacion_seg * 1000)
+            break
+        except ErrorPlaywright as exc:
+            if espera is None:
+                raise ErrorPeriodoSheet(
+                    f"No se pudo descargar el Sheet en CSV tras {intento} intentos: {exc}"
+                ) from exc
+            log.warning(
+                "La descarga del Sheet fallo (intento %d): %s. Se reintenta en %ds.",
+                intento, str(exc)[:160], espera,
+            )
+            time.sleep(espera)
 
     if not respuesta.ok:
         raise ErrorPeriodoSheet(

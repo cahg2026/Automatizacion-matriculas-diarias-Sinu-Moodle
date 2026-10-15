@@ -20,6 +20,7 @@ from moodle_sinu import ejecutor_sinu as ej  # noqa: E402
 from moodle_sinu import selectores_sinu_escritura as sesc  # noqa: E402
 from moodle_sinu.clasificador_sinu import FilaGrupoSinu  # noqa: E402
 from moodle_sinu.config import Config  # noqa: E402
+from moodle_sinu.constantes_sinu import INTENTOS_POR_UNIDAD  # noqa: E402
 from moodle_sinu.ejecutor_sinu import (  # noqa: E402
     AccionSeDesbordo,
     CicloAbierto,
@@ -223,8 +224,15 @@ class TestCiclosAbiertos:
 
 
 class TestReintentosDelVincular:
-    def test_se_reintenta_mas_que_en_el_resto_del_proyecto(self):
-        assert ej.REINTENTOS_VINCULAR_TRAS_DESVINCULAR >= 3
+    def test_un_solo_intento_por_unidad(self):
+        """Regla del dueno del proceso (25/09/2026): una sola pasada por fila.
+
+        Antes esta prueba exigia lo contrario (`>= 3`). No se borra: se invierte,
+        porque el valor volvio a cambiar y conviene que la prueba lo fije en la
+        direccion nueva en vez de dejar el numero sin vigilar.
+        """
+        assert ej.REINTENTOS_VINCULAR_TRAS_DESVINCULAR == 1
+        assert INTENTOS_POR_UNIDAD == 1
 
     def test_ciclo_abierto_es_un_error_aparte(self):
         assert issubclass(CicloAbierto, ErrorEjecucionSinu)
@@ -348,6 +356,10 @@ class TestSoloLaMateriaDelReporte:
         # no duerme, asi que la espera se consume a toda velocidad de reloj.
         monkeypatch.setattr(ej, "SEG_SONDEO_CHECK", 0)
         monkeypatch.setattr(ej, "SEG_ENTRE_SONDEOS", 0)
+        # El contador del muestreo de desborde es de MODULO: sin esto, a
+        # partir de la 5.a escritura de la sesion de pruebas la guarda
+        # dejaria de mirar y los tests de desborde pasarian por no mirar.
+        ej.reiniciar_muestreo_desborde()
 
     def test_no_recicla_por_culpa_de_otras_asignaturas(self, monkeypatch):
         """El caso de 1000000102: 7 vinculadas mas la del reporte sin check.
@@ -383,6 +395,11 @@ class TestSoloLaMateriaDelReporte:
         assert ej.ciclos_abiertos() == []
 
 
+def test_la_guarda_de_desborde_esta_apagada_en_produccion():
+    """Decision del dueno del proceso, 06/10/2026: costaba 6-10 min/dia."""
+    assert ej.COMPROBAR_DESBORDE is False
+
+
 class TestGuardaDeDesborde:
     """Si acotar la grilla no confina la accion, hay que enterarse y parar."""
 
@@ -394,6 +411,13 @@ class TestGuardaDeDesborde:
         # no duerme, asi que la espera se consume a toda velocidad de reloj.
         monkeypatch.setattr(ej, "SEG_SONDEO_CHECK", 0)
         monkeypatch.setattr(ej, "SEG_ENTRE_SONDEOS", 0)
+        # El contador del muestreo de desborde es de MODULO: sin esto, a
+        # partir de la 5.a escritura de la sesion de pruebas la guarda
+        # dejaria de mirar y los tests de desborde pasarian por no mirar.
+        ej.reiniciar_muestreo_desborde()
+        # La guarda esta apagada en produccion desde el 06/10/2026; estas
+        # pruebas comprueban que, si se vuelve a encender, sigue funcionando.
+        monkeypatch.setattr(ej, "COMPROBAR_DESBORDE", True)
 
     def test_si_cambia_otra_asignatura_se_detiene(self, monkeypatch):
         """El escenario que se teme: el filtro no confina y la accion arrasa."""
@@ -423,6 +447,56 @@ class TestGuardaDeDesborde:
         # Solo el desvincular: la guarda corto antes del vincular.
         assert esc.pedidas == [sesc.OPCION_DESVINCULAR]
 
+    def test_la_muestra_inicial_comprueba_siempre(self, monkeypatch):
+        """Las primeras escrituras del lote se miran todas, sin excepcion.
+
+        Es donde se ve el fallo que la guarda busca: que el filtro de
+        COD_MATERIA no confine nada es una propiedad de la PANTALLA, asi que si
+        pasa, pasa desde la primera escritura. El 03/09/2026 se desbordaron las
+        5 unidades del lote, no una suelta.
+        """
+        ej.reiniciar_muestreo_desborde()
+        assert [ej.toca_comprobar_desborde() for _ in range(5)] == [True] * 5
+
+    def test_despues_de_la_muestra_se_espacia(self, monkeypatch):
+        ej.reiniciar_muestreo_desborde()
+        vistas = [ej.toca_comprobar_desborde() for _ in range(80)]
+        # Las 5 primeras, y luego una de cada 25.
+        assert vistas[:5] == [True] * 5
+        assert sum(vistas) == 5 + (80 - 5) // ej.COMPROBAR_DESBORDE_CADA
+        assert vistas[5] is False  # la 6.a ya no se mira
+
+    def test_el_muestreo_recorta_el_coste_medido(self):
+        """La razon de existir del muestreo, en numeros.
+
+        Cada comprobacion son 18 s (una relectura del estudiante ENTERO, medido
+        el 25/09/2026). Con 432 unidades y 2 escrituras cada una son 864
+        comprobaciones: 4,3 h. El muestreo las deja en unas 39.
+        """
+        ej.reiniciar_muestreo_desborde()
+        comprobadas = sum(ej.toca_comprobar_desborde() for _ in range(864))
+        assert comprobadas < 50
+        assert comprobadas >= ej.MUESTRA_INICIAL_DESBORDE
+
+    def test_se_puede_volver_a_comprobarlo_todo(self, monkeypatch):
+        """El interruptor de vuelta atras, si alguna vez se ve un desborde real."""
+        monkeypatch.setattr(ej, "MUESTREO_DESBORDE", False)
+        ej.reiniciar_muestreo_desborde()
+        assert all(ej.toca_comprobar_desborde() for _ in range(60))
+
+    def test_reiniciar_vuelve_a_abrir_la_muestra(self, monkeypatch):
+        """Un proceso con varios lotes tiene que muestrear cada uno."""
+        ej.reiniciar_muestreo_desborde()
+        for _ in range(60):
+            ej.toca_comprobar_desborde()
+        ej.reiniciar_muestreo_desborde()
+        assert ej.toca_comprobar_desborde() is True
+
+    def test_apagar_la_guarda_gana_al_muestreo(self, monkeypatch):
+        monkeypatch.setattr(ej, "COMPROBAR_DESBORDE", False)
+        ej.reiniciar_muestreo_desborde()
+        assert not any(ej.toca_comprobar_desborde() for _ in range(10))
+
     def test_se_puede_apagar_cuando_este_confirmado(self, monkeypatch):
         monkeypatch.setattr(ej, "COMPROBAR_DESBORDE", False)
         antes = [_g(True, "OTRA", "11111"), _g(False, MATERIA, GRUPO)]
@@ -442,6 +516,10 @@ class TestConfirmacionDelCheck:
         # Sondeo instantaneo: los tests no esperan 90 s reales.
         monkeypatch.setattr(ej, "SEG_SONDEO_CHECK", 0)
         monkeypatch.setattr(ej, "SEG_ENTRE_SONDEOS", 0)
+        # El contador del muestreo de desborde es de MODULO: sin esto, a
+        # partir de la 5.a escritura de la sesion de pruebas la guarda
+        # dejaria de mirar y los tests de desborde pasarian por no mirar.
+        ej.reiniciar_muestreo_desborde()
 
     def test_check_confirmado_no_escala(self, monkeypatch):
         esc = _Escenario(monkeypatch, antes=[_g(False)], despues=[_g(True)])
@@ -459,11 +537,18 @@ class TestConfirmacionDelCheck:
         assert [p["motivo"] for p in pendientes] == [ej.MOTIVO_SIN_CHECK]
         assert pendientes[0]["materias_sin_check"] == [f"{MATERIA}/{GRUPO}"]
 
-    def test_reintenta_antes_de_escalar(self, monkeypatch):
+    def test_escala_sin_reintentar(self, monkeypatch):
+        """La regla del 25/09/2026, medida donde se nota: en las pulsaciones.
+
+        Antes esta prueba se llamaba `test_reintenta_antes_de_escalar` y exigia
+        3 pulsaciones de 'Vincular'. Cada una arrastraba su ejecucion en ISEF07
+        (58-125 s medidos el 01/09/2026) y su sondeo de 90 s: ~300-430 s por
+        fila fallida que ahora no se gastan.
+        """
         esc = _Escenario(monkeypatch, antes=[_g(False)], despues=[_g(False)])
         with pytest.raises(ej.CheckNoConfirmado):
             esc.ejecutar()
-        assert len(esc.pedidas) == ej.INTENTOS_HASTA_ESCALAR
+        assert esc.pedidas == [sesc.OPCION_VINCULAR]
 
     def test_la_excepcion_lleva_lo_medido(self, monkeypatch):
         """El 07/09/2026: 7 unidades rojas anotadas con acciones=[] y 0 s.
@@ -478,8 +563,9 @@ class TestConfirmacionDelCheck:
             esc.ejecutar()
         r = exc.value.resultado
         assert r is not None
-        # Las tres pulsaciones de vincular: lo que el diario anotaba como [].
-        assert len(r.acciones_ejecutadas) == ej.INTENTOS_HASTA_ESCALAR
+        # La pulsacion de vincular: lo que el diario anotaba como []. Eran tres
+        # hasta el 25/09/2026; ahora es una, y sigue teniendo que llegar aqui.
+        assert r.acciones_ejecutadas == [sesc.OPCION_VINCULAR]
         assert r.materias_sin_check == [f"{MATERIA}/{GRUPO}"]
         # `segundos` no se comprueba aqui: en el escenario todo es instantaneo y
         # redondea a 0,0, asi que medirlo seria medir el reloj, no el arreglo.

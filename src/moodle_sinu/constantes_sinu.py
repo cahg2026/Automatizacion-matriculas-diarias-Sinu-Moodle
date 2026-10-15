@@ -123,9 +123,33 @@ FILAS_ESPERADAS_POR_CEDULA = 1
 #: check en Moodle y se registra en Google Sheets.
 VERIFICAR_CHECK_VINCULADO = True
 
-#: Intentos del vincular antes de dar el check por imposible y escalar. Cada
-#: intento vuelve a leer la grilla: sin relectura no hay nada que reintentar.
-INTENTOS_HASTA_ESCALAR = 3
+#: Intentos de la accion sobre UNA fila (cedula, materia). UNO, y no mas.
+#:
+#: Regla del dueno del proceso (25/09/2026), que sustituye a los 3 intentos que
+#: habia aqui desde el principio:
+#:
+#:   > Actua sobre la unidad (cedula, materia) UNA SOLA VEZ. Si en ese unico
+#:   > intento el sistema no procesa o falla, no esperes los ciclos de reintento
+#:   > de 90 segundos: marca la fila como escalada a validacion manual
+#:   > (ISEF05/PACF50) e interrumpe el flujo para esa fila.
+#:
+#: Por que 3 estaba mal. El reintento solo tiene sentido frente a un fallo
+#: TRANSITORIO, y aqui nunca se clasifico la causa: los 3 intentos se aplicaban
+#: igual a una imposibilidad estructural. El caso medido es `DTA32/55598`
+#: (26V05): 4 estudiantes x 3 intentos x 3 dias contra un grupo sin curso en
+#: MOODLE, donde vincular no podia funcionar nunca. ~24 minutos por corrida
+#: gastados en repetir un NO que ya se conocia.
+#:
+#: Coste que se quita: el 2.o y el 3.er intento arrastraban cada uno su sondeo
+#: de `SEG_SONDEO_CHECK` (90 s) mas la ejecucion en ISEF07 (58-125 s medidos el
+#: 01/09/2026). Son ~300-430 s por fila fallida que ahora no se pagan.
+#:
+#: Lo que NO se quita: el sondeo del UNICO intento. Los 90 s de
+#: `SEG_SONDEO_CHECK` no son un reintento -- son la confirmacion que el proceso
+#: exige tras cada accion, y estan ahi por un falso negativo medido el
+#: 03/09/2026 (una lectura a los 17 s dio la materia como no vinculada y el
+#: check aparecio despues). Quitarlos convertiria checks buenos en escalados.
+INTENTOS_POR_UNIDAD = 1
 
 #: Modulos que se consultan cuando el check no aparece. SOLO LECTURA -- la
 #: matriz de `restricciones_sinu` lo sigue impidiendo escribir en ellos.

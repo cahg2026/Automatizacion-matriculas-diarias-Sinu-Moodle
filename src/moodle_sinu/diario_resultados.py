@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 from .config import DIR_LOGS
@@ -83,6 +83,29 @@ MOTIVO_FALLO_TECNICO = "fallo-tecnico"
 #: contesto. `DTA32/55598` (26V05) se reintento asi el 07, el 15 y el 16/09/2026:
 #: cuatro estudiantes, tres intentos cada uno, ~24 minutos por corrida.
 MOTIVO_SIN_CURSO_MOODLE = "sin-curso-en-moodle"
+
+#: La fila se cerro por el CORTOCIRCUITO por shortname: otro estudiante del
+#: MISMO grupo (MATERIA/GRUPO) ya escalo en esta corrida, asi que esta no se
+#: intento siquiera. Regla del dueno del proceso, 25/09/2026.
+#:
+#: Va aparte de MOTIVO_CHECK_NO_CONFIRMADO aunque el destino sea el mismo
+#: (validar en ISEF05/PACF50), porque la EVIDENCIA es distinta y el operador
+#: tiene que poder distinguirlas:
+#:
+#:   - check-no-confirmado    : a ESTA fila se le ejecuto el vincular y fallo.
+#:   - escalado-validacion-manual : a esta fila NO se le toco nada. Lo que se
+#:     sabe es del grupo, no del estudiante. Si al validar el grupo resulta
+#:     sano, estas filas se reprocesan sin mas -- SINU quedo como estaba.
+#:
+#: Confundirlos haria creer que se intento vincular a alguien a quien no se
+#: toco, que es justo lo que hay que saber antes de reparar nada a mano.
+MOTIVO_ESCALADO_VALIDACION_MANUAL = "escalado-validacion-manual"
+
+#: PACF50, buscando por numero de grupo, NO tiene ese grupo, aunque ISEF05
+#: muestre el check de MOODLE. Regla del dueno del proceso (28/09/2026), tras
+#: revisar a mano POS01/55ES1, 55ES2, 55ES5 y 55ES6 en 26ES5. La fila no se
+#: intenta: sin grupo programado no hay que vincular. Se pinta en FUCSIA.
+MOTIVO_GRUPO_NO_EXISTE = "grupo-no-existe-en-sinu"
 
 
 def apuntar(
@@ -140,15 +163,24 @@ def leer() -> list[dict]:
     return apuntes
 
 
-def ultimo_por_unidad() -> dict[tuple[str, str, str], dict]:
+def ultimo_por_unidad(dia: date | None = None) -> dict[tuple[str, str, str], dict]:
     """El apunte MAS RECIENTE de cada (periodo, cedula, materia).
 
     Una unidad se puede reprocesar -- un reintento, una reparacion -- y lo que
     hay que pintar es como acabo, no como empezo. Al recorrer en orden de
     escritura, el ultimo sobreescribe a los anteriores.
+
+    Args:
+        dia: si se da, solo cuentan los apuntes de ese dia. El reporte se
+            regenera cada dia y lo que reaparece hay que procesarlo de nuevo
+            (regla del dueno del proceso, 06/10/2026): un verde de ayer no
+            vale para hoy, aunque la rotacion del diario fallara.
     """
+    prefijo = dia.isoformat() if dia else ""
     estado: dict[tuple[str, str, str], dict] = {}
     for apunte in leer():
+        if prefijo and not str(apunte.get("momento", "")).startswith(prefijo):
+            continue
         clave = (
             apunte.get("cod_periodo", ""),
             apunte.get("identificacion", ""),

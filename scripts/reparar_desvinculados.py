@@ -62,7 +62,7 @@ from moodle_sinu.lector_sinu import (  # noqa: E402
     leer_estudiante,
     limpiar_filtro_de_materia,
 )
-from moodle_sinu.navegador import abrir_contexto  # noqa: E402
+from moodle_sinu.navegador import abrir_contexto, parar_playwright  # noqa: E402
 from moodle_sinu.periodo_sheet import (  # noqa: E402
     ErrorPeriodoSheet,
     ErrorSecuencia,
@@ -120,7 +120,11 @@ def main() -> int:
     intactos: list[str] = []
     fallidos: list[tuple[str, str]] = []
 
-    with sync_playwright() as pw:
+    # start() y no `with`: si el navegador murio, SALIR del `with` lanza
+    # `InvalidStateError` y se lleva por delante un trabajo ya hecho.
+    # Ver `navegador.parar_playwright` (medido el 26/09/2026).
+    pw = sync_playwright().start()
+    try:
         context, cerrar = abrir_contexto(pw, cfg, not args.visible)
         try:
             # El Sheet primero, tambien aqui: la regla no tiene excepciones.
@@ -241,6 +245,8 @@ def main() -> int:
         finally:
             cerrar()
 
+    finally:
+        parar_playwright(pw)
     print()
     print("=" * 62)
     print(f"Arreglados : {len(arreglados)} {arreglados}")

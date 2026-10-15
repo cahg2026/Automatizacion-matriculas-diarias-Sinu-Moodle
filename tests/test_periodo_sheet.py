@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from moodle_sinu import periodo_sheet  # noqa: E402
 from moodle_sinu.constantes import COLUMNAS_ESPERADAS, COL_VALIDACION_RPA  # noqa: E402
 from moodle_sinu.periodo_sheet import (  # noqa: E402
     ErrorPeriodoSheet,
@@ -51,6 +52,82 @@ def fila_csv(periodo: str, cedula: str = "1000000101") -> list[str]:
     valores[COLUMNAS_ESPERADAS.index("IDENTIFICACION")] = cedula
     valores[COLUMNAS_ESPERADAS.index("COD_PERIODO")] = periodo
     return valores
+
+
+# --------------------------------------------------------------------------
+# Descarga con reintento (30/09/2026)
+# --------------------------------------------------------------------------
+
+
+class _Respuesta:
+    def __init__(self, texto, status=200):
+        self.ok = status < 400
+        self.status = status
+        self._texto = texto
+
+    def text(self):
+        return self._texto
+
+
+class _Peticiones:
+    def __init__(self, resultados):
+        self.resultados = list(resultados)
+        self.llamadas = 0
+
+    def get(self, url, timeout):
+        self.llamadas += 1
+        r = self.resultados.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+class _Cfg:
+    timeout_operacion_seg = 1
+
+
+def _pagina_con(resultados):
+    p = PaginaFalsa()
+    p.request = _Peticiones(resultados)
+    return p
+
+
+@pytest.fixture
+def sin_esperas(monkeypatch):
+    esperas = []
+    monkeypatch.setattr(periodo_sheet.time, "sleep", esperas.append)
+    return esperas
+
+
+def test_un_corte_de_red_se_reintenta_y_el_periodo_sigue(sin_esperas):
+    from playwright.sync_api import Error as ErrorPlaywright
+
+    csv = csv_de([fila_csv("2026D")])
+    p = _pagina_con([
+        ErrorPlaywright("Client network socket disconnected before secure TLS connection"),
+        _Respuesta(csv),
+    ])
+    assert periodo_sheet._descargar_csv(p, _Cfg()) == csv
+    assert p.request.llamadas == 2
+    assert sin_esperas == [periodo_sheet.ESPERAS_REINTENTO_CSV_SEG[0]]
+
+
+def test_si_la_red_no_vuelve_se_detiene_tras_la_gracia(sin_esperas):
+    from playwright.sync_api import Error as ErrorPlaywright
+
+    n = len(periodo_sheet.ESPERAS_REINTENTO_CSV_SEG) + 1
+    p = _pagina_con([ErrorPlaywright("TLS")] * n)
+    with pytest.raises(ErrorPeriodoSheet, match=f"tras {n} intentos"):
+        periodo_sheet._descargar_csv(p, _Cfg())
+    assert sum(sin_esperas) <= 180
+
+
+def test_un_403_no_se_reintenta(sin_esperas):
+    p = _pagina_con([_Respuesta("", status=403)])
+    with pytest.raises(ErrorPeriodoSheet, match="403"):
+        periodo_sheet._descargar_csv(p, _Cfg())
+    assert p.request.llamadas == 1
+    assert sin_esperas == []
 
 
 # --------------------------------------------------------------------------

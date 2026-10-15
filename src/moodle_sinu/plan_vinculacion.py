@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .constantes import COL_COD_PENSUM, COL_COD_UNIDAD
 from .constantes_sinu import (
     SEG_EJECUCION_VINCULACION,
     SEG_FILTRO_CEDULA,
@@ -59,6 +60,11 @@ class OperacionSinu:
 
     fila: int = 0
     """Fila del reporte de la que sale (1-based, como en el .xlsx)."""
+
+    cod_unidad: str = ""
+    cod_pensum: str = ""
+    """Programa y pensum de la fila (COD_UNIDAD, COD_PENSUM). PACF50 los usa
+    para pulsar la oferta correcta de la asignatura (28/09/2026)."""
 
     @property
     def objetivo(self) -> str:
@@ -179,6 +185,8 @@ def construir_plan(resultado: ResultadoValidacion) -> PlanVinculacion:
             cod_materia=fila.cod_materia or "",
             num_grupo=getattr(fila, "num_grupo", "") or "",
             fila=fila.fila,
+            cod_unidad=fila.valor(COL_COD_UNIDAD),
+            cod_pensum=fila.valor(COL_COD_PENSUM),
         )
         if not fila.cod_periodo:
             sin_periodo.append(operacion)

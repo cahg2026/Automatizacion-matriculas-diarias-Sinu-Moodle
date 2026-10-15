@@ -105,6 +105,18 @@ class Color(str, Enum):
     ROJO_CLARO = "FFC7CE"
     #: Fase 2 - Caso 3, sin matricula academica
     LILA = "E6E6FA"
+    #: Etapa 4 - ciclo desvincular+vincular que quedo A MEDIAS en SINU.
+    #: Es el unico color que no describe un hallazgo del reporte sino un dano
+    #: que dejamos nosotros, y por eso tiene el suyo: en rojo se confundia con
+    #: los fallos que no rompieron nada. Saturado a proposito, para que no se
+    #: mezcle con el LILA palido de al lado.
+    MORADO = "9966CC"
+    #: Etapa 4 - el grupo no existe en SINU (PACF50 no lo tiene), aunque ISEF05
+    #: muestre el check de MOODLE. Pedido por el dueno del proceso el
+    #: 28/09/2026 tras revisar a mano POS01/55ES1, 55ES2, 55ES5 y 55ES6 en
+    #: 26ES5. Color propio: no es un fallo de vinculacion ni falta de curso,
+    #: es que el grupo del reporte no esta programado.
+    FUCSIA = "FF00FF"
 
     def __str__(self) -> str:  # pragma: no cover - conveniencia de log
         return self.value
@@ -145,6 +157,18 @@ class Validacion(str, Enum):
 
     DUPLICADO = "DUPLICADO - VALIDAR ORIGEN"
     DATO_INCOMPLETO = "DATO INCOMPLETO - NO PROCESADO"
+
+    ESCALADO_VALIDACION_MANUAL = "ESCALADO A VALIDACIÓN MANUAL (ISEF05/PACF50)"
+    """La etapa 4 gasto su unico intento sobre esta fila -- o lo salto por el
+    cortocircuito del grupo -- y el resultado hay que confirmarlo a mano.
+
+    Es el texto que la regla del 25/09/2026 manda escribir en la columna Q.
+    Sustituye al generico 'REVISAR' para estas filas: 'REVISAR' no dice DONDE
+    revisar, y estas tienen destino fijo -- ISEF05 y PACF50, en ese orden."""
+
+    GRUPO_NO_EXISTE_SINU = "GRUPO NO EXISTE EN SINU"
+    """PACF50, buscando por numero de grupo, no tiene ese grupo -- aunque ISEF05
+    muestre el check de MOODLE. Se marca en FUCSIA y no se procesa (28/09/2026)."""
 
     def __str__(self) -> str:  # pragma: no cover - conveniencia de log
         return self.value

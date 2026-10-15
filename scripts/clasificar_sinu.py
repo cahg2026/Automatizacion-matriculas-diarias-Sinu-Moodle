@@ -54,7 +54,7 @@ from moodle_sinu.lector_sinu import (  # noqa: E402
     fijar_periodo,
     leer_estudiante,
 )
-from moodle_sinu.navegador import abrir_contexto  # noqa: E402
+from moodle_sinu.navegador import abrir_contexto, parar_playwright  # noqa: E402
 from moodle_sinu.plan_vinculacion import construir_plan, estimar_duracion  # noqa: E402
 from moodle_sinu.restricciones_sinu import resumen_permisos  # noqa: E402
 from moodle_sinu.salida_excel import escribir_copia_coloreada  # noqa: E402
@@ -149,7 +149,11 @@ def main() -> int:
         detenidos: list[tuple[str, str]] = []
         conteo: dict[str, int] = {}
 
-        with sync_playwright() as pw:
+        # start() y no `with`: si el navegador murio, SALIR del `with` lanza
+        # `InvalidStateError` y se lleva por delante un trabajo ya hecho.
+        # Ver `navegador.parar_playwright` (medido el 26/09/2026).
+        pw = sync_playwright().start()
+        try:
             context, cerrar = abrir_contexto(pw, cfg, sin_cabeza)
 
             # 1. Pestaña principal para SINU
@@ -239,6 +243,8 @@ def main() -> int:
                     log.info("Traza: playwright show-trace %s", ruta_traza)
                 cerrar()
 
+        finally:
+            parar_playwright(pw)
         destino = (
             Path(args.salida)
             if args.salida
