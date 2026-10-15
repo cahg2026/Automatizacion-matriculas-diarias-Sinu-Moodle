@@ -64,6 +64,7 @@ from moodle_sinu.constantes import (  # noqa: E402
     COL_NUM_GRUPO,
     COL_VALIDACION_RPA,
     Color,
+    Validacion,
 )
 
 log = logging.getLogger("marcar_gestion")
@@ -72,6 +73,72 @@ log = logging.getLogger("marcar_gestion")
 #: colores de Fase 2, asi que no se inventa nada nuevo.
 VERDE = Color.VERDE_CLARO
 ROJO = Color.ROJO_CLARO
+
+#: Etiqueta de la columna Q segun el motivo del diario. Lo que no este aqui
+#: cae en 'REVISAR', que es lo que se escribia para todo hasta el 25/09/2026.
+#:
+#: La columna Q la lee una persona que tiene que decidir QUE hacer con la fila,
+#: y 'REVISAR' no se lo dice. Los tres motivos de abajo tienen cada uno una
+#: accion distinta y ninguna es la misma:
+#:
+#:   escalado / check-no-confirmado -> abrir ISEF05 y PACF50 y validar el check.
+#:   sin-curso-en-moodle            -> CREAR el curso en MOODLE. No hay nada que
+#:                                     validar; validarlo es perder el viaje.
+#:   quedo-desvinculada             -> ir a ISEF07 a vincular a mano. Urgente:
+#:                                     el estudiante esta PEOR que al empezar.
+ETIQUETA_POR_MOTIVO: dict[str, str] = {
+    diario.MOTIVO_ESCALADO_VALIDACION_MANUAL: Validacion.ESCALADO_VALIDACION_MANUAL.value,
+    diario.MOTIVO_CHECK_NO_CONFIRMADO: Validacion.ESCALADO_VALIDACION_MANUAL.value,
+    # "SIN CHECK DE MOODLE" (07/10/2026): el dueno del proceso pidio quitar
+    # "CREAR EL CURSO". Se leia como que el curso no existia en SINU, y lo que
+    # pasa es que el grupo existe pero le falta el check 'Curso en moodle?'.
+    diario.MOTIVO_SIN_CURSO_MOODLE: "SIN CHECK DE MOODLE",
+    diario.MOTIVO_CICLO_ABIERTO: "QUEDO DESVINCULADA - VINCULAR A MANO EN ISEF07",
+    diario.MOTIVO_GRUPO_NO_EXISTE: Validacion.GRUPO_NO_EXISTE_SINU.value,
+}
+
+#: Motivos cuya celda lleva SOLO la etiqueta, sin "- motivo (fecha)" detras
+#: (07/10/2026). La etiqueta ya lo dice todo y el sufijo solo estorbaba.
+MOTIVOS_SOLO_ETIQUETA = frozenset({
+    diario.MOTIVO_SIN_CURSO_MOODLE,
+    diario.MOTIVO_GRUPO_NO_EXISTE,
+})
+
+#: Motivos con color propio. El resto de rojos siguen en ROJO.
+#:
+#: FUCSIA (28/09/2026): el grupo no existe en SINU. No es un fallo de la
+#: vinculacion ni un curso por crear en MOODLE, y quien lo arregla es otra
+#: persona -- en rojo se perderia entre los demas.
+COLOR_POR_MOTIVO: dict[str, Color] = {
+    diario.MOTIVO_GRUPO_NO_EXISTE: Color.FUCSIA,
+}
+
+
+def color_de(motivo: str, *, es_verde: bool) -> Color:
+    """El relleno de la fila para un motivo del diario."""
+    if es_verde:
+        return VERDE
+    return COLOR_POR_MOTIVO.get(motivo, ROJO)
+
+
+def etiqueta_de(motivo: str, *, es_verde: bool) -> str:
+    """El texto de la columna Q para un motivo del diario.
+
+    Funcion aparte, y pura, porque es la unica regla de este script que se puede
+    probar sin abrir un .xlsx ni un navegador -- y es la que lee la persona.
+    """
+    if es_verde:
+        return "VINCULADA Y VALIDADA"
+    return ETIQUETA_POR_MOTIVO.get(motivo, "REVISAR")
+
+
+def texto_celda(apunte: dict, *, es_verde: bool) -> str:
+    """El valor completo de la columna VALIDACION_RPA para un apunte."""
+    motivo = apunte.get("motivo", "")
+    etiqueta = etiqueta_de(motivo, es_verde=es_verde)
+    if not es_verde and motivo in MOTIVOS_SOLO_ETIQUETA:
+        return etiqueta
+    return f"{etiqueta} - {motivo} ({apunte.get('momento', '')[:16]})"
 
 
 #: `reporte_moodle_sinu_20260903_120929...` -> 2026-09-03. Ese sello lo pone la
@@ -219,7 +286,7 @@ def main() -> int:
         ws.cell(row=1, column=col_rpa, value=COL_VALIDACION_RPA)
     ultima_col = ws.max_column
 
-    verdes = rojos = 0
+    verdes = rojos = fucsias = 0
     descartadas: list[str] = []
 
     for (periodo, cedula, objetivo), apunte in unidades.items():
@@ -241,22 +308,18 @@ def main() -> int:
             continue
 
         es_verde = apunte.get("veredicto") == diario.Veredicto.VERDE.value
+        color = color_de(apunte.get("motivo", ""), es_verde=es_verde)
         relleno = PatternFill(
-            start_color=(VERDE if es_verde else ROJO).value,
-            end_color=(VERDE if es_verde else ROJO).value,
-            fill_type="solid",
+            start_color=color.value, end_color=color.value, fill_type="solid"
         )
         for col in range(1, ultima_col + 1):
             ws.cell(row=fila, column=col).fill = relleno
 
-        etiqueta = "VINCULADA Y VALIDADA" if es_verde else "REVISAR"
-        ws.cell(
-            row=fila,
-            column=col_rpa,
-            value=f"{etiqueta} - {apunte.get('motivo', '')} ({apunte.get('momento', '')[:16]})",
-        )
+        ws.cell(row=fila, column=col_rpa, value=texto_celda(apunte, es_verde=es_verde))
         if es_verde:
             verdes += 1
+        elif color is Color.FUCSIA:
+            fucsias += 1
         else:
             rojos += 1
 
@@ -273,6 +336,8 @@ def main() -> int:
     print(f"Unidades en el diario : {len(unidades)}")
     print(f"  pintadas VERDE      : {verdes}")
     print(f"  pintadas ROJO       : {rojos}")
+    if fucsias:
+        print(f"  pintadas FUCSIA     : {fucsias} (grupo no existe en SINU)")
     if descartadas:
         print(f"  NO pintadas         : {len(descartadas)}")
         for d in descartadas[:10]:
