@@ -103,7 +103,7 @@ def test_el_perfil_dedicado_no_pasa_profile_directory(tmp_path):
 
 def test_con_chrome_abierto_el_perfil_personal_se_rechaza(tmp_path, monkeypatch):
     """Chrome bloquea la carpeta de su perfil mientras corre."""
-    monkeypatch.setattr(perfil_navegador, "chrome_esta_corriendo", lambda: True)
+    monkeypatch.setattr(perfil_navegador, "navegador_esta_corriendo", lambda canal=None: True)
     perfil = PerfilResuelto(
         ruta=_perfil_chrome_falso(tmp_path), es_chrome_real=True, directorio="Default"
     )
@@ -115,7 +115,7 @@ def test_con_chrome_abierto_el_perfil_personal_se_rechaza(tmp_path, monkeypatch)
 
 
 def test_con_chrome_cerrado_el_perfil_personal_pasa(tmp_path, monkeypatch):
-    monkeypatch.setattr(perfil_navegador, "chrome_esta_corriendo", lambda: False)
+    monkeypatch.setattr(perfil_navegador, "navegador_esta_corriendo", lambda canal=None: False)
     perfil = PerfilResuelto(
         ruta=_perfil_chrome_falso(tmp_path), es_chrome_real=True, directorio="Default"
     )
@@ -123,7 +123,7 @@ def test_con_chrome_cerrado_el_perfil_personal_pasa(tmp_path, monkeypatch):
 
 
 def test_un_perfil_personal_inexistente_se_rechaza(tmp_path, monkeypatch):
-    monkeypatch.setattr(perfil_navegador, "chrome_esta_corriendo", lambda: False)
+    monkeypatch.setattr(perfil_navegador, "navegador_esta_corriendo", lambda canal=None: False)
     perfil = PerfilResuelto(
         ruta=tmp_path / "no-existe", es_chrome_real=True, directorio="Default"
     )
@@ -132,7 +132,7 @@ def test_un_perfil_personal_inexistente_se_rechaza(tmp_path, monkeypatch):
 
 
 def test_un_subdirectorio_inexistente_lista_los_disponibles(tmp_path, monkeypatch):
-    monkeypatch.setattr(perfil_navegador, "chrome_esta_corriendo", lambda: False)
+    monkeypatch.setattr(perfil_navegador, "navegador_esta_corriendo", lambda canal=None: False)
     user_data = _perfil_chrome_falso(tmp_path, directorio="Profile 3")
     perfil = PerfilResuelto(ruta=user_data, es_chrome_real=True, directorio="Default")
     with pytest.raises(ErrorPerfilNavegador) as exc:
@@ -142,7 +142,92 @@ def test_un_subdirectorio_inexistente_lista_los_disponibles(tmp_path, monkeypatc
 
 def test_el_perfil_dedicado_se_crea_y_no_exige_chrome_cerrado(tmp_path, monkeypatch):
     """Es la salida cuando no se puede cerrar Chrome."""
-    monkeypatch.setattr(perfil_navegador, "chrome_esta_corriendo", lambda: True)
+    monkeypatch.setattr(perfil_navegador, "navegador_esta_corriendo", lambda canal=None: True)
     destino = tmp_path / "perfil-nuevo"
     exigir_disponible(PerfilResuelto(ruta=destino, es_chrome_real=False))
     assert destino.is_dir()
+
+
+# --------------------------------------------------------------------------
+# El canal: quien bloquea el perfil depende de con que se abre
+# --------------------------------------------------------------------------
+# Todo esto no existia hasta el 25/09/2026 y hacia falta desde el 24/09, que es
+# cuando el canal de produccion paso de 'chrome' a 'msedge'. El modulo entero
+# seguia razonando en terminos de chrome.exe.
+
+
+def test_cada_canal_tiene_su_ejecutable():
+    assert perfil_navegador.proceso_de("chrome") == "chrome.exe"
+    assert perfil_navegador.proceso_de("msedge") == "msedge.exe"
+    # El chromium de Playwright tambien se llama chrome.exe en Windows.
+    assert perfil_navegador.proceso_de("chromium") == "chrome.exe"
+    # Un canal desconocido no revienta: cae en el historico del proyecto.
+    assert perfil_navegador.proceso_de("loquesea") == "chrome.exe"
+    assert perfil_navegador.proceso_de(None) == "chrome.exe"
+
+
+def test_el_perfil_lleva_su_canal(tmp_path):
+    perfil = resolver(
+        _cfg(
+            navegador_perfil="proyecto",
+            powerbi_perfil_navegador=tmp_path,
+            navegador_canal="msedge",
+        )
+    )
+    assert perfil.canal == "msedge"
+
+
+def test_el_cerrojo_busca_el_proceso_del_canal(tmp_path, monkeypatch):
+    """Con Edge, quien bloquea el perfil es msedge.exe, no chrome.exe.
+
+    Es la prueba que le faltaba a `cerrar_chrome_del_perfil` el 24/09/2026:
+    buscar el proceso equivocado no da error, da cero -- y no hacer nada se ve
+    igual que no haber encontrado nada.
+    """
+    preguntado: list[str | None] = []
+    monkeypatch.setattr(
+        perfil_navegador,
+        "navegador_esta_corriendo",
+        lambda canal=None: preguntado.append(canal) or False,
+    )
+    perfil = PerfilResuelto(
+        ruta=_perfil_chrome_falso(tmp_path),
+        es_chrome_real=True,
+        directorio="Default",
+        canal="msedge",
+    )
+    exigir_disponible(perfil)
+    assert preguntado == ["msedge"]
+
+
+def test_el_perfil_personal_con_otro_canal_se_rechaza():
+    """Abrir el 'User Data' de Chrome con Edge degrada el perfil del operador.
+
+    El propio config/.env avisa de que mezclar navegadores sobre una carpeta de
+    perfil la degrada y mata el navegador al arrancar. Con `NAVEGADOR_PERFIL=
+    chrome` y `NAVEGADOR_CANAL=msedge` no habia nada que lo impidiera, y la
+    carpeta en juego es la del navegador de diario del usuario.
+    """
+    with pytest.raises(ErrorPerfilNavegador) as exc:
+        resolver(_cfg(navegador_perfil="chrome", navegador_canal="msedge"))
+    assert "NAVEGADOR_PERFIL=proyecto" in str(exc.value)
+    assert "msedge" in str(exc.value)
+
+
+def test_el_perfil_personal_con_canal_de_chrome_se_acepta():
+    for canal in ("chrome", "chromium", "chrome-beta"):
+        assert resolver(_cfg(navegador_canal=canal)).es_chrome_real
+
+
+def test_el_perfil_dedicado_admite_cualquier_canal(tmp_path):
+    """La restriccion es solo del perfil PERSONAL: ese es de Chrome y de nadie
+    mas. Un perfil dedicado pertenece al canal que lo creo, y por eso el .env
+    tiene una carpeta distinta para Edge."""
+    perfil = resolver(
+        _cfg(
+            navegador_perfil="proyecto",
+            powerbi_perfil_navegador=tmp_path,
+            navegador_canal="msedge",
+        )
+    )
+    assert not perfil.es_chrome_real and perfil.canal == "msedge"

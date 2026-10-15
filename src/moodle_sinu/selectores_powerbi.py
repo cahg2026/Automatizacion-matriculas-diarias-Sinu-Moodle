@@ -132,7 +132,19 @@ ATRIBUTO_AUTOMATIZACION = "data-automation-type"
 
 #: Descripciones de rol de los visuales que admiten "Datos con diseno actual".
 #: Dependen del idioma de la UI, de ahi las variantes en ingles.
-ROLEDESC_TABULARES: tuple[str, ...] = ("Tabla", "Matriz", "Table", "Matrix")
+#: El 05/10/2026 Power BI paso de 'Tabla' a 'Objeto visual de tabla' sin que
+#: nadie tocara el informe, y la comparacion es exacta: dos dias sin descarga.
+#: Se conservan las formas viejas por si la UI vuelve atras.
+ROLEDESC_TABULARES: tuple[str, ...] = (
+    "Tabla",
+    "Matriz",
+    "Objeto visual de tabla",
+    "Objeto visual de matriz",
+    "Table",
+    "Matrix",
+    "Table visual",
+    "Matrix visual",
+)
 
 
 def css_visual_tabular() -> str:
@@ -147,6 +159,13 @@ def css_visual_tabular() -> str:
         f'div.visualContainer[aria-roledescription="{r}" i]' for r in ROLEDESC_TABULARES
     )
 
+
+#: Peticion con la que Power BI genera el .xlsx al pulsar "Exportar" (medido el
+#: 06/10/2026): `POST https://wabi-...analysis.windows.net/export/xlsx`, que
+#: responde con el archivo entero. Power BI lo pasa luego a un blob y de ahi al
+#: gestor de descargas del navegador; el .xlsx se toma AQUI, antes de ese paso.
+RUTA_RESPUESTA_EXPORTACION = "/export/xlsx"
+TIPO_XLSX = "spreadsheetml"
 
 #: Contenedor de cualquier visual, para diagnosticar cuando no hay ninguna tabla.
 CSS_CONTENEDOR_VISUAL = "div.visualContainer"

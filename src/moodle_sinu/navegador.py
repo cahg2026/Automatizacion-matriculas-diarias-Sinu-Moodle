@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from playwright.sync_api import BrowserContext, Error as ErrorPlaywright
+from playwright.sync_api import BrowserContext
 
 from . import perfil_navegador
 from .config import Config
@@ -80,12 +80,97 @@ ARGS_COMPAT_RDP_SIN_SANDBOX: tuple[str, ...] = (
 ARGS_A_IGNORAR: tuple[str, ...] = ("--enable-automation",)
 
 
-def abrir_contexto(
+def parar_playwright(pw) -> None:
+    """Para el driver de Playwright tolerando que ya este muerto.
+
+    Compañera de `cerrar()`, y hace falta por lo mismo. MEDIDO el 26/09/2026:
+    con `cerrar()` ya blindado, el crash del navegador se mudo un nivel arriba
+    -- a **salir del `with sync_playwright()`**, cuyo `__exit__` llama a
+    `stop_sync()` y levanta:
+
+        asyncio.exceptions.InvalidStateError: invalid state
+
+    Como el `with` envuelve toda la etapa, esa excepcion salta ANTES de las
+    lineas que validan el .xlsx y devuelven el resultado. Efecto: descarga
+    hecha, archivo valido en disco, e intento contado como fallido.
+
+    Quien la use debe arrancar el driver con `sync_playwright().start()` y
+    llamar a esto en un `finally`, en vez de usar el `with`.
+    """
+    try:
+        pw.stop()
+    except Exception as exc:  # noqa: BLE001 - desmontar nunca puede tumbar la corrida
+        log.debug("No se pudo parar Playwright (%s); se continua.", exc)
+
+
+def abrir_navegador_aparte(
     pw,
     cfg: Config,
     headless: bool,
 ) -> tuple[BrowserContext, Callable[[], None]]:
-    """Crea el contexto del navegador. Devuelve (contexto, funcion_de_cierre)."""
+    """Un navegador NUEVO, sin perfil persistente. Devuelve (contexto, cierre).
+
+    Para las sesiones de SINU de la 05 y la 50 (28/09/2026, ver
+    `sesiones_sinu`). Sin perfil a proposito, por dos motivos:
+
+    - El perfil persistente solo lo puede abrir un navegador a la vez, y ya lo
+      tiene el de la 07 (y el del Sheet).
+    - SINU no lo necesita: la sesion vive en la memoria de la aplicacion y se
+      hace login en cada navegador. Y al no compartir cookies con el de la 07,
+      un login aqui no puede pisar la sesion de alli.
+
+    Mismo canal y mismos argumentos de compatibilidad que `abrir_contexto`.
+    """
+    argumentos: list[str] = []
+    if cfg.navegador_compat_rdp:
+        argumentos.extend(ARGS_COMPAT_RDP)
+    del_contexto: dict = {"locale": cfg.powerbi_idioma}
+    if headless:
+        del_contexto["viewport"] = VIEWPORT
+    else:
+        del_contexto["no_viewport"] = True
+        argumentos.append(ARG_MAXIMIZAR)
+
+    navegador = pw.chromium.launch(
+        headless=headless,
+        channel=cfg.navegador_canal,
+        ignore_default_args=list(ARGS_A_IGNORAR),
+        args=argumentos,
+    )
+    try:
+        context = navegador.new_context(**del_contexto)
+    except Exception:
+        _cerrar_tolerante(navegador.close)
+        raise
+    log.info("Navegador aparte abierto (canal '%s', sin perfil).", cfg.navegador_canal)
+
+    def cerrar() -> None:
+        _cerrar_tolerante(context.close)
+        _cerrar_tolerante(navegador.close)
+
+    return context, cerrar
+
+
+def _cerrar_tolerante(accion) -> None:
+    try:
+        accion()
+    except Exception as exc:  # noqa: BLE001 - cerrar nunca puede tumbar la corrida
+        log.debug("No se pudo cerrar (%s); se continua.", exc)
+
+
+def abrir_contexto(
+    pw,
+    cfg: Config,
+    headless: bool,
+    *,
+    aceptar_descargas: bool = True,
+) -> tuple[BrowserContext, Callable[[], None]]:
+    """Crea el contexto del navegador. Devuelve (contexto, funcion_de_cierre).
+
+    `aceptar_descargas=False` hace que el navegador cancele toda descarga antes
+    de escribirla. Lo usa la exportacion de Power BI, que toma el .xlsx de la
+    respuesta de red porque el gestor de descargas de Edge se cae (06/10/2026).
+    """
     argumentos: list[str] = []
 
     # La compatibilidad con RDP se activa por configuracion y no por defecto: la
@@ -110,7 +195,7 @@ def abrir_contexto(
         "ignore_default_args": list(ARGS_A_IGNORAR),
     }
     del_contexto: dict = {
-        "accept_downloads": True,
+        "accept_downloads": aceptar_descargas,
         "locale": cfg.powerbi_idioma,
     }
 
@@ -145,16 +230,40 @@ def abrir_contexto(
     )
 
     def cerrar() -> None:
-        """Cierra el contexto tolerando que ya lo hayan cerrado.
+        """Cierra el contexto tolerando CUALQUIER fallo al cerrarlo.
 
         Con ventana, el operador cierra el navegador cuando termina -- es la
         forma natural de acabar una grabacion. Entonces `context.close()` lanza
         `TargetClosedError`, y al venir de un `finally` sepultaba el resultado
         real de la corrida bajo un traceback que no aportaba nada.
+
+        Se atrapa `Exception` y no solo `ErrorPlaywright`. MEDIDO el 26/09/2026,
+        y costaba el dia entero:
+
+        Cuando el proceso del navegador se muere de golpe -- el `0xC0000005` de
+        siempre --, Playwright no levanta un `Error` suyo sino un **`Exception`
+        pelado**:
+
+            Exception: : Connection closed while reading from the driver
+
+        Ese no lo atrapaba el `except ErrorPlaywright`, asi que escapaba desde el
+        `finally` de `exportar_reporte`... que esta ANTES de las lineas que
+        validan el .xlsx y devuelven el resultado. Consecuencia: **la descarga
+        habia funcionado, el archivo estaba en disco y era valido, y el intento
+        se contaba como fallido igual.**
+
+        Lo comprobado ese dia: 5 intentos, 2 con reporte bueno en `data/raw/`
+        (269 filas, estructura correcta), y el flujo abortado con el mensaje "La
+        exportacion de Power BI fallo en los 5 intentos". El 25/09 habia pasado
+        lo mismo en el intento de las 08:38.
+
+        Cerrar el navegador es limpieza. Si el trabajo ya esta hecho y escrito,
+        que la limpieza falle no puede tirarlo: como mucho deja un proceso
+        colgado, y de eso ya se encarga `limpiar_chrome_colgado` entre intentos.
         """
         try:
             context.close()
-        except ErrorPlaywright as exc:
-            log.debug("El contexto ya estaba cerrado: %s", exc)
+        except Exception as exc:  # noqa: BLE001 - cerrar nunca puede tumbar la corrida
+            log.debug("No se pudo cerrar el contexto (%s); se continua.", exc)
 
     return context, cerrar

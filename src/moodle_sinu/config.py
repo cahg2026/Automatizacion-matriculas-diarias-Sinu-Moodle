@@ -218,6 +218,19 @@ class Config:
     """Plazo de la exportacion. Con ~1300 filas la generacion del .xlsx no es
     inmediata; el defecto de 30s de Playwright se queda corto."""
 
+    exportacion_reintentos: int = 5
+    """Cuantas veces se intenta la etapa 2 antes de rendirse.
+
+    No es un timeout: es para caidas del propio Chrome. El proceso principal
+    del navegador revienta de vez en cuando justo al arrancar la descarga
+    (0xC0000005 dentro de chrome.dll; volcados del 18, 22 y 23/09/2026), y
+    hasta entonces un solo tropiezo ahi costaba el dia entero con 0 matriculas
+    procesadas. Cada intento abre un navegador nuevo."""
+
+    exportacion_espera_seg: int = 90
+    """Pausa entre intentos de la etapa 2. Da tiempo a que Windows termine de
+    soltar el Chrome que acaba de caerse antes de abrir el siguiente."""
+
     # --- Avisos (flujo desatendido de las 9:00) ---
     notificar_webhook: str | None = None
     """URL de webhook entrante de Teams o Slack.
@@ -259,25 +272,9 @@ class Config:
     tenga margen de dispararse. Un recordatorio cuyo momento ya paso no salta,
     asi que a 0 el aviso puede no llegar nunca a la pantalla."""
 
-    # --- El cerrojo del tablero ---
-    cerrojo_espera_min: int = 90
-    """Ventana de gracia del cerrojo: cuantos minutos se reintenta la lectura
-    antes de dar el tablero por desactualizado.
-
-    NO es un adorno. El 09/09/2026 a las 08:05 el tablero aun decia 8/9/26, y
-    el dia anterior a las 15:16 ya decia 8/9/26: el refresco cae en algun
-    momento de la manana y puede ser DESPUES de las 9:00. Con una sola lectura,
-    la tarea de las 9:00 encontraria datos viejos todos los dias y mandaria una
-    alerta diaria sin procesar nunca nada -- la alerta se volveria ruido y la
-    automatizacion, inutil.
-
-    90 minutos cubre hasta las 10:30 con la tarea a las 9:00. Subirlo cuando se
-    sepa la hora real del refresco; el log de cada corrida la deja anotada.
-    0 = una sola lectura, el comportamiento estricto."""
-
-    cerrojo_intervalo_min: int = 15
-    """Cada cuantos minutos se reintenta dentro de la ventana. Cada reintento
-    abre y cierra el navegador, asi que tampoco conviene bajarlo mucho."""
+    # El cerrojo del tablero ya no tiene ventana de gracia (28/09/2026): un
+    # tablero viejo pausa el dia en la primera lectura. CERROJO_ESPERA_MIN y
+    # CERROJO_INTERVALO_MIN se ignoran si siguen en un .env antiguo.
 
     @property
     def tiene_canal_de_aviso(self) -> bool:
@@ -325,6 +322,8 @@ class Config:
             reintentos_login=int(os.getenv("REINTENTOS_LOGIN", "1")),
             timeout_render_seg=int(os.getenv("TIMEOUT_RENDER_SEG", "120")),
             timeout_descarga_seg=int(os.getenv("TIMEOUT_DESCARGA_SEG", "300")),
+            exportacion_reintentos=int(os.getenv("EXPORTACION_REINTENTOS", "5")),
+            exportacion_espera_seg=int(os.getenv("EXPORTACION_ESPERA_SEG", "90")),
             notificar_webhook=_texto_opcional("NOTIFICAR_WEBHOOK"),
             notificar_smtp_servidor=_texto_opcional("NOTIFICAR_SMTP_SERVIDOR"),
             notificar_smtp_puerto=int(os.getenv("NOTIFICAR_SMTP_PUERTO", "587")),
@@ -337,8 +336,6 @@ class Config:
             notificar_calendar_adelanto_min=int(
                 os.getenv("NOTIFICAR_CALENDAR_ADELANTO_MIN", "2")
             ),
-            cerrojo_espera_min=int(os.getenv("CERROJO_ESPERA_MIN", "90")),
-            cerrojo_intervalo_min=int(os.getenv("CERROJO_INTERVALO_MIN", "15")),
         )
 
 

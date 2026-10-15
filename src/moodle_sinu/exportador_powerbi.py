@@ -25,7 +25,6 @@ from urllib.parse import urlsplit
 from openpyxl import load_workbook
 from playwright.sync_api import (
     BrowserContext,
-    Download,
     Error as ErrorPlaywright,
     Locator,
     Page,
@@ -36,7 +35,7 @@ from playwright.sync_api import (
 from . import selectores_powerbi as sel
 from .config import DIR_CRUDO, DIR_LOGS, Config
 from .constantes import COLUMNAS_ESPERADAS
-from .navegador import abrir_contexto
+from .navegador import abrir_contexto, parar_playwright
 
 log = logging.getLogger(__name__)
 
@@ -496,8 +495,15 @@ def _exportar_visual(
     cfg: Config,
     advertencias: list[str],
     captura: Path | None = None,
-) -> tuple[Download, int | None]:
-    """Menu del visual -> Exportar datos -> Datos con diseno actual -> Exportar."""
+) -> tuple[bytes, int | None]:
+    """Menu del visual -> Exportar datos -> Datos con diseno actual -> Exportar.
+
+    Devuelve el contenido del .xlsx tal como llega en la respuesta de Power BI,
+    sin pasar por el gestor de descargas del navegador: ahi es donde Edge 154
+    revienta (`msedge.dll+0x9ABC32B`, mismo offset en cada caida del
+    06/10/2026, 6 de 9 intentos). El contexto se abre con las descargas
+    rechazadas, asi que Edge cancela la suya antes de escribir nada.
+    """
     page.set_default_timeout(_ms(cfg.timeout_operacion_seg))
 
     _verificar_pagina(page, cfg, advertencias)
@@ -545,14 +551,36 @@ def _exportar_visual(
 
     log.info("Confirmando la exportacion; la descarga puede tardar.")
     try:
-        with page.expect_download(timeout=_ms(cfg.timeout_descarga_seg)) as info:
+        with page.expect_response(
+            es_respuesta_de_exportacion, timeout=_ms(cfg.timeout_descarga_seg)
+        ) as info:
             boton_exportar.first.click()
     except ErrorTiempoPlaywright as exc:
         raise ErrorExportacionPowerBI(
             f"Power BI no entrego la descarga en {cfg.timeout_descarga_seg}s. "
             "Con muchas filas puede hacer falta subir TIMEOUT_DESCARGA_SEG."
         ) from exc
-    return info.value, no_matriculado
+
+    respuesta = info.value
+    if respuesta.status != 200:
+        raise ErrorExportacionPowerBI(
+            f"Power BI respondio {respuesta.status} a la exportacion "
+            f"({respuesta.url[:120]})."
+        )
+    tipo = respuesta.headers.get("content-type", "")
+    if sel.TIPO_XLSX not in tipo:
+        raise ErrorExportacionPowerBI(
+            f"La exportacion no devolvio un .xlsx sino '{tipo}'."
+        )
+    return respuesta.body(), no_matriculado
+
+
+def es_respuesta_de_exportacion(respuesta) -> bool:
+    """La respuesta de red que trae el .xlsx exportado."""
+    return (
+        respuesta.request.method == "POST"
+        and sel.RUTA_RESPUESTA_EXPORTACION in urlsplit(respuesta.url).path
+    )
 
 
 def leer_valor_de_tarjeta(etiqueta: str) -> int | None:
@@ -691,8 +719,13 @@ def _localizar_visual_tabular(page: Page, cfg: Config, advertencias: list[str]) 
     if not _visible(candidatos, cfg.timeout_render_seg):
         # Sin tablas no hay exportacion posible con diseno actual: listar lo que
         # si hay ahorra el viaje a la traza.
+        # Con el tipo de cada visual: el 05/10/2026 la tabla estaba ahi como
+        # 'Objeto visual de tabla' y solo el titulo no lo dejaba ver.
         todos = page.locator(sel.CSS_CONTENEDOR_VISUAL)
-        etiquetas = _etiquetas_de(todos)
+        etiquetas = [
+            f"{etiqueta} ({todos.nth(i).get_attribute('aria-roledescription') or '?'})"
+            for i, etiqueta in enumerate(_etiquetas_de(todos))
+        ]
         raise ErrorExportacionPowerBI(
             "La pagina del informe no tiene ningun visual de tabla o matriz, "
             "que son los unicos que permiten exportar 'Datos con diseno "
@@ -1009,8 +1042,23 @@ def exportar_reporte(
     if con_captura:
         ruta_captura = DIR_LOGS / f"dialogo_exportacion_{sello}.png"
 
-    with sync_playwright() as pw:
-        context, cerrar = _abrir_contexto(pw, cfg, sin_cabeza)
+    # `sync_playwright().start()` en vez de `with sync_playwright() as pw:`.
+    #
+    # MEDIDO el 26/09/2026: cuando el navegador se muere de golpe, **salir del
+    # `with` tambien revienta** -- su `__exit__` llama a `stop_sync()` y de ahi
+    # sale `asyncio.exceptions.InvalidStateError: invalid state`. Y como el
+    # `with` envuelve todo, esa excepcion ocurre ANTES de las lineas que validan
+    # el .xlsx y devuelven el resultado: la descarga estaba hecha y en disco, y
+    # el intento se contaba como fallido igual.
+    #
+    # Es el mismo fallo que ya se tapo en `navegador.cerrar()`, una capa mas
+    # arriba. Aquel arreglo se vio funcionar en esta misma corrida ("No se pudo
+    # cerrar el contexto (...); se continua") y el crash simplemente se mudo
+    # aqui. Desmontar el navegador es limpieza: si el trabajo ya esta hecho y
+    # escrito, ningun fallo de limpieza puede tirarlo.
+    pw = sync_playwright().start()
+    try:
+        context, cerrar = _abrir_contexto(pw, cfg, sin_cabeza, aceptar_descargas=False)
         if con_traza:
             DIR_LOGS.mkdir(parents=True, exist_ok=True)
             ruta_traza = DIR_LOGS / f"traza_powerbi_{sello}.zip"
@@ -1022,12 +1070,14 @@ def exportar_reporte(
 
             _iniciar_sesion(page, cfg, advertencias)
             pagina_informe, ruta_navegacion = _abrir_informe(context, page, cfg)
-            descarga, no_matriculado = _exportar_visual(
+            contenido, no_matriculado = _exportar_visual(
                 pagina_informe, cfg, advertencias, ruta_captura
             )
 
-            nombre_sugerido = descarga.suggested_filename
-            descarga.save_as(destino)
+            # La respuesta no trae Content-Disposition: el nombre lo pone el
+            # JavaScript de Power BI a partir del titulo del visual.
+            nombre_sugerido = f"{cfg.powerbi_visual.strip() or 'export'}.xlsx"
+            destino.write_bytes(contenido)
             log.info("Descargado '%s' -> %s", nombre_sugerido, destino)
         except ErrorExportacionPowerBI:
             raise
@@ -1046,9 +1096,18 @@ def exportar_reporte(
             ) from exc
         finally:
             if con_traza and ruta_traza is not None:
-                context.tracing.stop(path=str(ruta_traza))
-                log.info("Traza: playwright show-trace %s", ruta_traza)
+                # Guardar la traza tambien toca el navegador, asi que tambien
+                # puede reventar si murio. La traza es diagnostico: perderla
+                # duele, perder la descarga por perderla es absurdo.
+                try:
+                    context.tracing.stop(path=str(ruta_traza))
+                    log.info("Traza: playwright show-trace %s", ruta_traza)
+                except Exception as exc:  # noqa: BLE001 - la traza no vale la corrida
+                    log.debug("No se pudo guardar la traza (%s); se continua.", exc)
+                    ruta_traza = None
             cerrar()
+    finally:
+        parar_playwright(pw)
 
     if not destino.is_file() or destino.stat().st_size == 0:
         raise ErrorExportacionPowerBI(f"La descarga quedo vacia o no se escribio: {destino}")

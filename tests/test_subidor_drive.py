@@ -416,3 +416,148 @@ class TestGuardaDeCoordinacion:
         puede estar abierto en la pestana de alguien."""
         fuente = self._mensaje()
         assert "if del_dia and reemplazar:" in fuente
+
+
+class PaginaConTeclado:
+    """Doble de Page para la ventana de gracia: teclado y esperas contadas."""
+
+    def __init__(self):
+        self.teclas: list[str] = []
+        self.esperas_ms = 0.0
+        self.keyboard = self
+
+    def press(self, tecla: str) -> None:
+        self.teclas.append(tecla)
+
+    def wait_for_timeout(self, ms: float) -> None:
+        self.esperas_ms += ms
+
+
+class TestVentanaDeGracia:
+    """Un corte breve de red no puede tirar la corrida entera.
+
+    El 17/09/2026 el DNS dejo de resolver unos 15 s justo despues de pulsar
+    'Cambiar nombre'. El dialogo carga su JavaScript bajo demanda, el chunk no
+    llego y el dialogo nunca aparecio. El renombrado es el ULTIMO gesto de la
+    etapa 3, asi que se perdieron tambien las etapas 4 a 6: cero matriculas
+    procesadas por un corte que ya se habia resuelto solo.
+    """
+
+    @pytest.fixture
+    def sd(self, monkeypatch):
+        from moodle_sinu import subidor_drive as sd
+
+        monkeypatch.setattr(sd, "SEG_GRACIA_RED", 5.0)
+        monkeypatch.setattr(sd, "SEG_SONDEO_RED", 0.0)
+        monkeypatch.setattr(sd, "_abrir_carpeta", lambda *a, **k: None)
+        monkeypatch.setattr(sd, "_buscar_fila", lambda p, n: None)
+        return sd
+
+    def test_reintenta_y_lo_consigue(self, sd, monkeypatch):
+        llamadas = []
+
+        def renombrar(page, cfg, actual, definitivo):
+            llamadas.append(definitivo)
+            if len(llamadas) == 1:
+                raise sd.ErrorSubidaDrive("No se encontro el campo de nombre")
+
+        monkeypatch.setattr(sd, "_renombrar", renombrar)
+        sd._renombrar_con_gracia(PaginaConTeclado(), None, "prov", "def", "ID")
+        assert len(llamadas) == 2
+
+    def test_cierra_el_menu_antes_de_reintentar(self, sd, monkeypatch):
+        """Un menu a medio abrir se come el clic derecho del intento siguiente."""
+        llamadas = []
+
+        def renombrar(page, cfg, actual, definitivo):
+            llamadas.append(definitivo)
+            if len(llamadas) == 1:
+                raise sd.ErrorSubidaDrive("dialogo que no aparece")
+
+        monkeypatch.setattr(sd, "_renombrar", renombrar)
+        pagina = PaginaConTeclado()
+        sd._renombrar_con_gracia(pagina, None, "prov", "def", "ID")
+        assert pagina.teclas == ["Escape"]
+
+    def test_si_el_nombre_ya_esta_no_reintenta(self, sd, monkeypatch):
+        """El fallo pudo ser solo de la comprobacion final.
+
+        Si el dialogo se confirmo y lo que fallo fue refrescar la lista, el
+        reintento buscaria el nombre PROVISIONAL, que ya no existe, y abortaria
+        por una razon inventada.
+        """
+        llamadas = []
+
+        def renombrar(page, cfg, actual, definitivo):
+            llamadas.append(definitivo)
+            raise sd.ErrorSubidaDrive("no aparecio en la lista")
+
+        monkeypatch.setattr(sd, "_renombrar", renombrar)
+        monkeypatch.setattr(sd, "_buscar_fila", lambda p, n: object())
+        sd._renombrar_con_gracia(PaginaConTeclado(), None, "prov", "def", "ID")
+        assert len(llamadas) == 1
+
+    def test_se_rinde_al_agotar_la_gracia(self, sd, monkeypatch):
+        monkeypatch.setattr(sd, "SEG_GRACIA_RED", 0.0)
+        monkeypatch.setattr(
+            sd,
+            "_renombrar",
+            lambda *a: (_ for _ in ()).throw(sd.ErrorSubidaDrive("sigue sin red")),
+        )
+        with pytest.raises(sd.ErrorSubidaDrive) as exc:
+            sd._renombrar_con_gracia(PaginaConTeclado(), None, "prov", "def", "ID")
+        mensaje = str(exc.value)
+        # El ultimo fallo real viaja en el mensaje: "se agoto la gracia" a secas
+        # no distingue un corte de red de un selector que cambio.
+        assert "sigue sin red" in mensaje
+        assert "ventana de gracia" in mensaje
+
+    def test_espera_a_que_drive_responda(self, monkeypatch):
+        """Se sondea, no se reintenta el gesto a ciegas: cada intento fallido
+        del renombrado cuesta ~60 s de plazos agotados."""
+        from moodle_sinu import subidor_drive as sd
+
+        monkeypatch.setattr(sd, "SEG_SONDEO_RED", 0.0)
+        aperturas = []
+
+        def abrir(page, id_carpeta, cfg, descripcion):
+            aperturas.append(id_carpeta)
+            if len(aperturas) < 3:
+                raise sd.ErrorSubidaDrive("ERR_NAME_NOT_RESOLVED")
+
+        monkeypatch.setattr(sd, "_abrir_carpeta", abrir)
+        import time as _t
+
+        assert sd._esperar_a_drive(
+            PaginaConTeclado(), None, "ID", _t.monotonic() + 5.0
+        )
+        assert len(aperturas) == 3
+
+    def test_el_sondeo_se_rinde_al_agotarse_la_ventana(self, monkeypatch):
+        from moodle_sinu import subidor_drive as sd
+
+        monkeypatch.setattr(sd, "SEG_SONDEO_RED", 0.0)
+        monkeypatch.setattr(
+            sd,
+            "_abrir_carpeta",
+            lambda *a: (_ for _ in ()).throw(sd.ErrorSubidaDrive("sin red")),
+        )
+        import time as _t
+
+        assert not sd._esperar_a_drive(PaginaConTeclado(), None, "ID", _t.monotonic())
+
+    def test_la_subida_usa_la_version_con_gracia(self):
+        """Regresion: si alguien vuelve a llamar a `_renombrar` pelado aqui, el
+        corte de red vuelve a costar la corrida entera."""
+        from moodle_sinu import subidor_drive as sd
+        import inspect
+
+        fuente = inspect.getsource(sd.subir_reporte)
+        assert "_renombrar_con_gracia" in fuente
+        assert "\n                _renombrar(" not in fuente
+
+    def test_son_tres_minutos(self):
+        """La cifra la fijo quien opera el flujo."""
+        from moodle_sinu import subidor_drive as sd
+
+        assert sd.SEG_GRACIA_RED == 180.0

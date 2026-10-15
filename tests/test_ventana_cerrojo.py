@@ -1,18 +1,19 @@
-"""La ventana de gracia del cerrojo del tablero.
+"""El cerrojo del tablero: una sola lectura, sin ventana de espera.
 
-Existe por lo que se midio el 09/09/2026: a las 08:05 el tablero aun decia
-8/9/26, y el dia anterior a las 15:16 ya decia 8/9/26. El refresco cae en algun
-momento de la manana y puede ser DESPUES de las 9:00. Con una sola lectura, la
-tarea de las 9:00 alertaria todos los dias sin procesar nada, y la alerta se
-volveria ruido que nadie mira.
+Hasta el 28/09/2026 un tablero viejo se releia cada 15 min durante hasta 90
+min. Ahora una fecha legible -- de hoy o vieja -- se devuelve a la primera, y
+solo la fecha ILEGIBLE (pantalla en blanco, lienzo a medio pintar) tiene dos
+reintentos rapidos con 10 s de pausa y recarga.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
+
+import pytest
 
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "src"))
@@ -34,118 +35,197 @@ def _cargar():
 
 va = _cargar()
 
-HOY = date(2026, 9, 9)
 AYER = Actualizacion(fecha=date(2026, 9, 8), texto="Datos actualizados el 8/9/26")
 DE_HOY = Actualizacion(fecha=date(2026, 9, 9), texto="Datos actualizados el 9/9/26")
 
 
-class _Reloj:
-    """Reloj y sueno simulados: las pruebas no esperan de verdad."""
+class _SesionFalsa:
+    """Una sesion de tablero simulada. Cuenta aperturas, lecturas y cierres."""
 
-    def __init__(self):
-        self.ahora = 0.0
-        self.dormido = []
+    aperturas = 0
 
-    def monotonic(self):
-        return self.ahora
+    def __init__(self, lecturas):
+        self.pendientes = list(lecturas)
+        self.leidas = 0
+        self.cerrada = False
+        type(self).aperturas += 1
 
-    def sleep(self, segundos):
-        self.dormido.append(segundos)
-        self.ahora += segundos
-
-
-def _preparar(monkeypatch, lecturas):
-    """`lecturas` se consume una por intento; una excepcion se lanza."""
-    reloj = _Reloj()
-    monkeypatch.setattr(va.time, "monotonic", reloj.monotonic)
-    monkeypatch.setattr(va.time, "sleep", reloj.sleep)
-    pendientes = list(lecturas)
-
-    def falso(cfg, sin_cabeza):
-        valor = pendientes.pop(0)
+    def leer(self):
+        self.leidas += 1
+        valor = self.pendientes.pop(0)
         if isinstance(valor, Exception):
             raise valor
         return valor
 
-    monkeypatch.setattr(va, "_leer", falso)
-    return reloj, pendientes
+    def cerrar(self):
+        self.cerrada = True
 
 
-class TestCuandoYaEstaAlDia:
-    def test_una_sola_lectura_y_a_correr(self, monkeypatch):
-        reloj, quedan = _preparar(monkeypatch, [DE_HOY])
-        act, ilegible = va.esperar_actualizacion(
-            Config(), True, HOY, minutos_ventana=90, minutos_intervalo=15
-        )
+@pytest.fixture
+def dormido(monkeypatch):
+    """Las pruebas no esperan de verdad: se anota cuanto se habria dormido."""
+    anotado: list[float] = []
+    monkeypatch.setattr(va.time, "sleep", anotado.append)
+    return anotado
+
+
+def _sesion(monkeypatch, lecturas) -> _SesionFalsa:
+    _SesionFalsa.aperturas = 0
+    sesion = _SesionFalsa(lecturas)
+    monkeypatch.setattr(va, "_abrir_sesion", lambda cfg, sin_cabeza: sesion)
+    return sesion
+
+
+def _ilegible(texto="no aparece el texto"):
+    return ErrorFechaActualizacion(texto)
+
+
+class TestUnaSolaLectura:
+    def test_de_hoy_sale_a_la_primera(self, monkeypatch, dormido):
+        sesion = _sesion(monkeypatch, [DE_HOY])
+        act, ilegible = va.verificar_una_vez(Config(), True)
         assert act is DE_HOY and ilegible == ""
-        assert reloj.dormido == []  # no espero nada
-        assert quedan == []
+        assert dormido == []
+        assert sesion.leidas == 1
 
-
-class TestCuandoLlegaTarde:
-    def test_espera_y_lo_pilla_al_tercer_intento(self, monkeypatch):
-        """El caso que motiva todo: el tablero llega a media manana."""
-        reloj, _ = _preparar(monkeypatch, [AYER, AYER, DE_HOY])
-        act, ilegible = va.esperar_actualizacion(
-            Config(), True, HOY, minutos_ventana=90, minutos_intervalo=15
-        )
-        assert act is DE_HOY and ilegible == ""
-        assert reloj.dormido == [900, 900]  # dos esperas de 15 min
-
-    def test_no_se_pasa_de_la_ventana(self, monkeypatch):
-        """La ultima espera se recorta para no exceder el plazo dado."""
-        reloj, _ = _preparar(monkeypatch, [AYER, AYER, DE_HOY])
-        va.esperar_actualizacion(
-            Config(), True, HOY, minutos_ventana=20, minutos_intervalo=15
-        )
-        assert reloj.dormido == [900, 300]  # 15 min y luego solo los 5 que quedan
-        assert sum(reloj.dormido) == 20 * 60
-
-
-class TestCuandoNoLlega:
-    def test_agotada_la_ventana_devuelve_el_tablero_viejo(self, monkeypatch):
-        """Y entonces el CLI da la alerta critica y sale con 3."""
-        reloj, _ = _preparar(monkeypatch, [AYER, AYER])
-        act, ilegible = va.esperar_actualizacion(
-            Config(), True, HOY, minutos_ventana=15, minutos_intervalo=15
-        )
+    def test_vieja_sale_a_la_primera_sin_releer(self, monkeypatch, dormido):
+        """Lo que cambio el 28/09/2026: un tablero viejo NO se espera."""
+        sesion = _sesion(monkeypatch, [AYER, DE_HOY])
+        act, ilegible = va.verificar_una_vez(Config(), True)
         assert act is AYER and ilegible == ""
-        assert act.es_anterior_a(HOY)
-
-    def test_ventana_cero_es_el_modo_estricto(self, monkeypatch):
-        """Una sola lectura, sin esperar: el comportamiento de antes."""
-        reloj, quedan = _preparar(monkeypatch, [AYER])
-        act, _ = va.esperar_actualizacion(
-            Config(), True, HOY, minutos_ventana=0, minutos_intervalo=15
-        )
-        assert act is AYER
-        assert reloj.dormido == []
-        assert quedan == []
+        assert dormido == []
+        assert sesion.leidas == 1  # la segunda lectura ni se intenta
 
 
-class TestLoQueNoSeReintenta:
-    def test_si_no_se_puede_leer_no_se_espera(self, monkeypatch):
-        """Esperar no arregla que el tablero cambiara de forma, y reintentar
-        durante 90 minutos solo retrasaria el aviso de que hay que sondearlo."""
-        reloj, quedan = _preparar(
-            monkeypatch,
-            [ErrorFechaActualizacion("no aparece el texto"), DE_HOY],
+class TestFechaIlegible:
+    def test_se_recupera_en_el_primer_reintento(self, monkeypatch, dormido):
+        sesion = _sesion(monkeypatch, [_ilegible(), DE_HOY])
+        act, ilegible = va.verificar_una_vez(Config(), True)
+        assert act is DE_HOY and ilegible == ""
+        assert dormido == [10]
+        assert sesion.leidas == 2
+
+    def test_tras_una_recarga_puede_salir_vieja(self, monkeypatch, dormido):
+        """Legible y vieja tras reintentar: se devuelve, y `main` saldra con 3."""
+        _sesion(monkeypatch, [_ilegible(), _ilegible(), AYER])
+        act, ilegible = va.verificar_una_vez(Config(), True)
+        assert act is AYER and ilegible == ""
+        assert dormido == [10, 10]
+
+    def test_como_mucho_dos_reintentos(self, monkeypatch, dormido):
+        sesion = _sesion(
+            monkeypatch, [_ilegible(), _ilegible(), _ilegible("cambio de forma"), DE_HOY]
         )
-        act, ilegible = va.esperar_actualizacion(
-            Config(), True, HOY, minutos_ventana=90, minutos_intervalo=15
-        )
+        act, ilegible = va.verificar_una_vez(Config(), True)
         assert act is None
-        assert "no aparece el texto" in ilegible
-        assert reloj.dormido == []
-        assert len(quedan) == 1  # no gasto la segunda lectura
+        assert "cambio de forma" in ilegible and "3 intentos" in ilegible
+        assert sesion.leidas == 3  # 1 + 2 reintentos; la cuarta no se gasta
+        assert dormido == [10, 10]  # no se duerme tras el ultimo
+
+    def test_sin_reintentos_no_se_espera(self, monkeypatch, dormido):
+        _sesion(monkeypatch, [_ilegible()])
+        act, _ = va.verificar_una_vez(Config(), True, reintentos_ilegible=0)
+        assert act is None
+        assert dormido == []
+
+    def test_los_valores_pedidos(self):
+        assert va.REINTENTOS_ILEGIBLE == 2
+        assert va.SEG_ESPERA_ILEGIBLE == 10
 
 
-class TestValoresPorDefecto:
-    def test_la_ventana_viene_de_la_config(self):
-        c = Config()
-        assert c.cerrojo_espera_min == 90
-        assert c.cerrojo_intervalo_min == 15
+class TestUnSoloNavegador:
+    """El perfil persistente es uno solo: un Edge colgado impide la siguiente
+    corrida. El navegador se abre una vez y se cierra por cualquier salida."""
 
-    def test_noventa_minutos_cubren_hasta_las_diez_y_media(self):
-        """Con la tarea a las 9:00. Es el razonamiento del valor por defecto."""
-        assert 9 * 60 + Config().cerrojo_espera_min == 10 * 60 + 30
+    def test_los_reintentos_reusan_el_navegador(self, monkeypatch, dormido):
+        sesion = _sesion(monkeypatch, [_ilegible(), _ilegible(), DE_HOY])
+        va.verificar_una_vez(Config(), True)
+        assert sesion.leidas == 3
+        assert _SesionFalsa.aperturas == 1
+
+    @pytest.mark.parametrize(
+        "lecturas",
+        [[DE_HOY], [AYER], [_ilegible(), _ilegible(), _ilegible()]],
+        ids=["de-hoy", "vieja", "ilegible"],
+    )
+    def test_se_cierra_en_cada_salida(self, monkeypatch, dormido, lecturas):
+        sesion = _sesion(monkeypatch, lecturas)
+        va.verificar_una_vez(Config(), True)
+        assert sesion.cerrada
+
+    def test_se_cierra_aunque_la_lectura_reviente(self, monkeypatch, dormido):
+        """Un fallo tecnico sube al CLI como SALIDA_FALLO_TECNICO, sin
+        reintentar: no es una fecha ilegible."""
+        sesion = _sesion(monkeypatch, [RuntimeError("el navegador murio"), DE_HOY])
+        with pytest.raises(RuntimeError):
+            va.verificar_una_vez(Config(), True)
+        assert sesion.cerrada
+        assert sesion.leidas == 1
+        assert dormido == []
+
+
+class TestCodigosDeSalida:
+    @pytest.fixture
+    def cli(self, monkeypatch):
+        """`main` sin navegador, sin logs y registrando los avisos."""
+        avisos = []
+        monkeypatch.setattr(va, "asegurar_directorios", lambda: None)
+        monkeypatch.setattr(va.registro, "configurar", lambda *a, **k: None)
+        monkeypatch.setattr(
+            va.Config, "desde_entorno", classmethod(lambda cls: Config())
+        )
+        def falso_enviar(aviso, cfg):
+            avisos.append(aviso)
+            return va.notificaciones.ResultadoEnvio(enviado=True)
+
+        monkeypatch.setattr(va.notificaciones, "enviar", falso_enviar)
+
+        def con_lectura(resultado):
+            monkeypatch.setattr(
+                va, "verificar_una_vez", lambda cfg, sin_cabeza: resultado
+            )
+
+        return con_lectura, avisos
+
+    def test_de_hoy_es_0(self, cli):
+        con_lectura, avisos = cli
+        hoy = date.today()
+        con_lectura((Actualizacion(fecha=hoy, texto="hoy"), ""))
+        assert va.main([]) == va.SALIDA_OK
+        assert avisos == []
+
+    def test_vieja_es_3_y_no_avisa_desde_aqui(self, cli):
+        """El aviso del tablero viejo lo da el orquestador. Si el cerrojo
+        tambien avisara, llegarian dos alertas y dos eventos de Calendar."""
+        con_lectura, avisos = cli
+        ayer = date.today() - timedelta(days=1)
+        con_lectura((Actualizacion(fecha=ayer, texto="ayer"), ""))
+        assert va.main([]) == va.SALIDA_DESACTUALIZADO
+        assert avisos == []
+
+    def test_vieja_imprime_la_linea_que_lee_el_orquestador(self, cli, capsys):
+        con_lectura, _ = cli
+        ayer = date.today() - timedelta(days=1)
+        con_lectura((Actualizacion(fecha=ayer, texto="ayer"), ""))
+        va.main([])
+        assert any(
+            l.startswith("Estado       :") for l in capsys.readouterr().out.splitlines()
+        )
+
+    def test_ilegible_es_4_y_si_avisa(self, cli):
+        con_lectura, avisos = cli
+        con_lectura((None, "no aparece el texto (tras 3 intentos)"))
+        assert va.main([]) == va.SALIDA_ILEGIBLE
+        assert len(avisos) == 1
+
+    def test_ilegible_con_sin_avisar_no_avisa(self, cli):
+        con_lectura, avisos = cli
+        con_lectura((None, "no aparece el texto"))
+        assert va.main(["--sin-avisar"]) == va.SALIDA_ILEGIBLE
+        assert avisos == []
+
+    def test_ya_no_hay_opciones_de_ventana(self, cli):
+        con_lectura, _ = cli
+        con_lectura((None, "x"))
+        with pytest.raises(SystemExit):
+            va.main(["--esperar-minutos", "90"])

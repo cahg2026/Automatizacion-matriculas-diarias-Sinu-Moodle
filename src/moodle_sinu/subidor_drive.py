@@ -65,6 +65,26 @@ log = logging.getLogger(__name__)
 #: menu contextual no se abre y parece que el selector cambio.
 SEG_ASENTAR_LISTA = 6.0
 
+#: Ventana de gracia para reintentar un gesto de Drive que fallo por algo que no
+#: depende del codigo -- en la practica, que se caiga la red a mitad de corrida.
+#:
+#: El 17/09/2026 el DNS dejo de resolver durante unos 15 s justo despues de
+#: pulsar 'Cambiar nombre' (`ERR_NAME_NOT_RESOLVED` sobre los chunks de
+#: `drive.google.com` en la traza). El dialogo de renombrado carga su JavaScript
+#: bajo demanda: el chunk no llego, el dialogo nunca se dibujo y el flujo aborto
+#: con 0 estudiantes procesados. El corte se habia resuelto solo antes de que
+#: terminara el propio mensaje de error.
+#:
+#: Tres minutos es la cifra que pidio quien opera el flujo: cubre los cortes
+#: breves de la red de la oficina sin dejar colgada indefinidamente una corrida
+#: que arranca a las 9:00 y todavia tiene que pasar por SINU.
+SEG_GRACIA_RED = 180.0
+
+#: Cada cuanto se tantea si Drive volvio, dentro de la ventana de gracia. No se
+#: reintenta el gesto a ciegas: sondear es barato y el gesto cuesta ~60 s de
+#: plazos agotados.
+SEG_SONDEO_RED = 10.0
+
 
 class ErrorSubidaDrive(RuntimeError):
     """La subida a Drive no se pudo completar."""
@@ -1040,6 +1060,119 @@ def _verificar_renombrado(page: Page, cfg: Config, actual: str, definitivo: str)
         "del reporte del dia."
     )
 
+
+def _esperar_a_drive(page: Page, cfg: Config, id_carpeta: str, limite: float) -> bool:
+    """Espera a que Drive vuelva a responder, sin pasarse de `limite`.
+
+    Sondear abriendo la carpeta cumple dos funciones a la vez: dice si hay red y
+    deja la vista donde el reintento la necesita (dentro de la carpeta del mes,
+    con la lista pintada). No vale un `reload()`: Drive es una SPA y recargar sin
+    navegar por URL puede dejar la aplicacion mostrando otra carpeta.
+
+    Returns:
+        True si la carpeta se pudo abrir de nuevo; False si se agoto la ventana.
+    """
+    while True:
+        try:
+            _abrir_carpeta(page, id_carpeta, cfg, "la carpeta del mes (reintento)")
+            return True
+        except (ErrorSubidaDrive, ErrorPlaywright) as exc:
+            restante = limite - time.monotonic()
+            if restante <= 0:
+                log.warning("Drive sigue sin responder y se agoto la gracia: %s", exc)
+                return False
+            espera = min(SEG_SONDEO_RED, restante)
+            log.warning(
+                "Drive no responde (%s). Quedan %.0f s de gracia; se tantea de "
+                "nuevo en %.0f s.",
+                exc,
+                restante,
+                espera,
+            )
+            try:
+                page.wait_for_timeout(_ms(espera))
+            except ErrorPlaywright:
+                # El contexto se murio: no hay nada que esperar.
+                return False
+
+
+def _renombrar_con_gracia(
+    page: Page, cfg: Config, actual: str, definitivo: str, id_carpeta: str
+) -> None:
+    """`_renombrar`, pero sin tirar la corrida por un corte breve de red.
+
+    Nace del 17/09/2026 (ver `SEG_GRACIA_RED`): el renombrado es el ultimo gesto
+    de la etapa 3, asi que fallar aqui desperdicia la exportacion de Power BI, la
+    subida y, sobre todo, las etapas 4 a 6 -- ni una matricula procesada por un
+    corte de quince segundos.
+
+    Entre intento e intento se hacen tres cosas, y las tres hacen falta:
+
+      1. `Escape`, porque un menu o un dialogo a medio abrir se come el clic
+         derecho del intento siguiente;
+      2. esperar a que Drive responda (`_esperar_a_drive`), que ademas devuelve
+         la vista a la carpeta del mes;
+      3. mirar si el nombre nuevo ya esta. El fallo pudo ser SOLO de la
+         comprobacion final -- dialogo confirmado y lista sin refrescar -- y en
+         ese caso reintentar buscaria el nombre provisional, que ya no existe,
+         y el reintento fallaria por una razon inventada.
+
+    Raises:
+        ErrorSubidaDrive: si la ventana de gracia se agota sin conseguirlo. Se
+            conserva el ultimo fallo real en el mensaje: "se agoto la gracia" a
+            secas no dice si fue la red o un selector que cambio.
+    """
+    limite = time.monotonic() + SEG_GRACIA_RED
+    intento = 0
+    ultimo: Exception | None = None
+
+    while True:
+        intento += 1
+        try:
+            _renombrar(page, cfg, actual, definitivo)
+            if intento > 1:
+                log.info(
+                    "Renombrado resuelto al intento %d, dentro de la ventana de "
+                    "gracia de %.0f s.",
+                    intento,
+                    SEG_GRACIA_RED,
+                )
+            return
+        except ErrorSubidaDrive as exc:
+            ultimo = exc
+            restante = max(0.0, limite - time.monotonic())
+            log.warning("Renombrado fallido (intento %d): %s", intento, exc)
+            if restante <= 0:
+                break
+            log.warning(
+                "Quedan %.0f s de gracia: se espera a que Drive responda y se "
+                "reintenta antes de dar la etapa por perdida.",
+                restante,
+            )
+
+        try:
+            page.keyboard.press("Escape")
+        except ErrorPlaywright as exc:
+            log.debug("No se pudo cerrar el menu antes de reintentar: %s", exc)
+
+        if not _esperar_a_drive(page, cfg, id_carpeta, limite):
+            break
+
+        if _buscar_fila(page, definitivo) is not None:
+            log.info(
+                "'%s' ya figura con el nombre nuevo: el renombrado si se habia "
+                "aplicado y lo que fallo fue la comprobacion.",
+                definitivo,
+            )
+            return
+
+    raise ErrorSubidaDrive(
+        f"No se pudo renombrar a '{definitivo}' en los {SEG_GRACIA_RED:.0f} s de "
+        f"ventana de gracia ({intento} intento(s)). Si el motivo fue la red, el "
+        f"corte duro mas que la ventana. Ultimo fallo: {ultimo}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Orquestacion
 # ---------------------------------------------------------------------------
@@ -1177,7 +1310,7 @@ def subir_reporte(
                 # fallo en el primer intento del 04/09/2026 ("No se encuentra
                 # 'REPORTE 03/09/2026 #198' para renombrarlo").
                 _abrir_carpeta(page, id_raiz, cfg, "la carpeta raiz")
-                _entrar_en_carpeta_mes(page, cfg, fecha, advertencias)
+                _, id_mes_previo = _entrar_en_carpeta_mes(page, cfg, fecha, advertencias)
 
                 for previo in del_dia:
                     apartado = f"{previo.nombre} {SUFIJO_APARTADO}"
@@ -1188,7 +1321,9 @@ def subir_reporte(
                         previo.nombre,
                         apartado,
                     )
-                    _renombrar(page, cfg, previo.nombre, apartado)
+                    _renombrar_con_gracia(
+                        page, cfg, previo.nombre, apartado, id_mes_previo
+                    )
                     advertencias.append(
                         f"'{previo.nombre}' se aparto como '{apartado}'. Sigue en "
                         "Drive y su enlace sigue funcionando."
@@ -1226,9 +1361,11 @@ def subir_reporte(
                 # 5. Asegurar que quedo como Sheet.
                 convertido = _convertir_a_sheet(page, context, cfg, temporal.stem)
 
-                # 6. Nombre definitivo, ya con las barras.
+                # 6. Nombre definitivo, ya con las barras. Con ventana de gracia
+                #    porque es el ultimo gesto de la etapa: fallar aqui tira la
+                #    corrida entera, incluidas las etapas 4 a 6 (17/09/2026).
                 definitivo = nombre_reporte(fecha, numero)
-                _renombrar(page, cfg, temporal.stem, definitivo)
+                _renombrar_con_gracia(page, cfg, temporal.stem, definitivo, id_mes)
             finally:
                 shutil.rmtree(temporal.parent, ignore_errors=True)
 

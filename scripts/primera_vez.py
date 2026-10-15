@@ -69,6 +69,18 @@ CLAVES_IMPRESCINDIBLES = (
     ("SINU_USUARIO", "SU cuenta de SINU, con permiso sobre ISEF07"),
     ("SINU_PASSWORD", "contrasena de SU cuenta de SINU"),
     ("GOOGLE_CARPETA_RAIZ_ID", "id de la carpeta de Drive (de su URL)"),
+    (
+        "POWERBI_PERFIL_NAVEGADOR",
+        r"carpeta del perfil dedicado, p. ej. C:\Users\<usuario>\.playwright-perfil-msedge",
+    ),
+)
+
+#: Donde se instala cada navegador que la automatizacion sabe usar. Edge es el
+#: de produccion desde el 24/09/2026 (Chrome reventaba al descargar).
+RUTAS_NAVEGADOR = (
+    ("Edge", Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")),
+    ("Edge", Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")),
+    ("Chrome", Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")),
 )
 
 SEG_ESPERA_LOGIN = 240
@@ -119,16 +131,14 @@ def revisar_entorno() -> bool:
         _falta("Falta Playwright:  .venv\\Scripts\\pip install -r requirements.txt")
         todo_bien = False
 
-    # Chromium/Chrome: el canal por defecto es el Chrome instalado.
-    if shutil.which("chrome") or Path(
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-    ).is_file():
-        _ok("Chrome instalado (NAVEGADOR_CANAL=chrome).")
+    # El navegador instalado: Edge (produccion, NAVEGADOR_CANAL=msedge) o Chrome.
+    encontrados = sorted({nombre for nombre, ruta in RUTAS_NAVEGADOR if ruta.is_file()})
+    if encontrados:
+        _ok(f"Navegador instalado: {', '.join(encontrados)}.")
     else:
         _falta(
-            "No se encontro Chrome. O se instala, o se pone "
-            "NAVEGADOR_CANAL=chromium y se ejecuta "
-            ".venv\\Scripts\\playwright install chromium"
+            "No se encontro Edge ni Chrome. Edge viene con Windows: instalarlo "
+            "desde microsoft.com/edge y poner NAVEGADOR_CANAL=msedge."
         )
         todo_bien = False
 
@@ -212,9 +222,9 @@ def revisar_perfil(cfg: Config) -> bool:
 
     if not perfil.ruta.exists():
         _falta("La carpeta del perfil no existe todavia.")
-        print("      Se crea sola al abrir el navegador por primera vez, o con:")
-        print("        python scripts\\sembrar_perfil.py")
-        print("      (sembrarla copia los favoritos del Chrome personal)")
+        print("      Se crea al abrir el navegador por primera vez. Crearla e")
+        print("      iniciar sesion en Google de una vez con:")
+        print("        .venv\\Scripts\\python.exe scripts\\probar_perfil.py --iniciar-sesion")
         return False
 
     _ok("La carpeta del perfil existe.")

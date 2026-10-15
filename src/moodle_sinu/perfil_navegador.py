@@ -46,6 +46,34 @@ log = logging.getLogger(__name__)
 MODO_CHROME = "chrome"
 MODO_PROYECTO = "proyecto"
 
+#: Ejecutable de cada canal de Chromium, en Windows. Importa porque desde el
+#: 24/09/2026 el canal de produccion es `msedge` y no `chrome`, y todo lo que en
+#: este modulo buscaba "chrome.exe" dejo de encontrar nada ese dia.
+#:
+#: El chromium empaquetado con Playwright tambien se llama chrome.exe en
+#: Windows: no es un descuido de esta tabla.
+PROCESOS_POR_CANAL: dict[str, str] = {
+    "chrome": "chrome.exe",
+    "chrome-beta": "chrome.exe",
+    "chromium": "chrome.exe",
+    "msedge": "msedge.exe",
+    "msedge-beta": "msedge.exe",
+}
+
+#: Canales que abren el Chrome personal del usuario. `NAVEGADOR_PERFIL=chrome`
+#: solo tiene sentido con uno de estos: la carpeta 'User Data' de Chrome es de
+#: Chrome, y abrirla con Edge es justo el "mezclar sobre un perfil" que el
+#: propio .env avisa que lo degrada y mata el navegador al arrancar.
+CANALES_DE_CHROME: frozenset[str] = frozenset({"chrome", "chrome-beta", "chromium"})
+
+#: Canal que se asume cuando no se sabe cual es. Es el historico del proyecto.
+CANAL_POR_DEFECTO = "chrome"
+
+
+def proceso_de(canal: str | None) -> str:
+    """El .exe del canal. Si el canal no se conoce, el de Chrome."""
+    return PROCESOS_POR_CANAL.get((canal or "").strip().lower(), "chrome.exe")
+
 #: Subcarpeta del perfil dentro de 'User Data'. Chrome guarda cada perfil en la
 #: suya: 'Default' es el primero, y los demas son 'Profile 1', 'Profile 2'...
 #: Se pasa como argumento porque `launch_persistent_context` recibe la carpeta
@@ -73,6 +101,15 @@ class PerfilResuelto:
     """Perfil dentro de 'User Data' ('Default', 'Profile 1'...). None cuando la
     carpeta ya es el perfil, que es el caso del modo `proyecto`."""
 
+    canal: str = CANAL_POR_DEFECTO
+    """Canal con el que se va a abrir ESTE perfil ('chrome', 'msedge'...).
+
+    Viaja con el perfil porque las dos cosas son inseparables: un perfil
+    persistente pertenece al navegador que lo creo. Sin este dato,
+    `exigir_disponible` no puede saber que proceso bloquea la carpeta -- y
+    entre el 24/09/2026 (cambio a Edge) y hoy estuvo buscando 'chrome.exe'
+    para un perfil que abre 'msedge.exe'."""
+
     @property
     def argumentos(self) -> tuple[str, ...]:
         """Argumentos de Chrome que hacen falta para este perfil."""
@@ -93,16 +130,17 @@ def perfil_chrome_real() -> Path:
     return Path(base) / "Google" / "Chrome" / "User Data"
 
 
-def chrome_esta_corriendo() -> bool:
-    """True si hay algun proceso chrome.exe.
+def navegador_esta_corriendo(canal: str | None = CANAL_POR_DEFECTO) -> bool:
+    """True si hay algun proceso del navegador de ese canal.
 
     Se consulta con `tasklist` y no con psutil para no anadir dependencia. Si
     la consulta falla se devuelve False: es preferible intentarlo y que el
     driver de el error real, a bloquear una corrida por un fallo de tasklist.
     """
+    exe = proceso_de(canal)
     try:
         salida = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq chrome.exe", "/NH"],
+            ["tasklist", "/FI", f"IMAGENAME eq {exe}", "/NH"],
             capture_output=True,
             text=True,
             timeout=20,
@@ -110,18 +148,106 @@ def chrome_esta_corriendo() -> bool:
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("No se pudo consultar tasklist (%s); se asume que no corre.", exc)
         return False
-    return "chrome.exe" in salida
+    return exe.lower() in salida
+
+
+def chrome_esta_corriendo() -> bool:
+    """True si hay algun chrome.exe. Nombre historico, lo usan cuatro scripts."""
+    return navegador_esta_corriendo(CANAL_POR_DEFECTO)
+
+
+def cerrar_chrome_del_perfil(
+    ruta_perfil: Path | str, canal: str | None = None
+) -> int:
+    """Mata los procesos del navegador que tengan ABIERTO ese perfil. Cuantos.
+
+    Solo esos. Filtrar por la ruta del perfil en la linea de comandos es lo que
+    hace la operacion segura: el navegador personal del operador no lleva
+    `--user-data-dir=<perfil de la automatizacion>` y por tanto nunca entra en
+    la lista. Un `taskkill /IM chrome.exe` cerraria las dos cosas.
+
+    Hace falta entre reintentos de la etapa 2. Cuando el proceso principal
+    revienta, Windows deja huerfanos los procesos hijos un rato; el perfil
+    sigue bloqueado y el intento siguiente hereda el desastre. Se vio el
+    23/09/2026: el reintento a mano de las 09:09 fallo ya al abrir el informe,
+    no por la descarga, porque reuso el Chrome envenenado de las 09:01.
+
+    **Esta funcion estuvo inerte desde el 24/09/2026.** Ese dia el canal paso a
+    `msedge` (por los volcados de chrome.dll), y el filtro de aqui seguia siendo
+    `Name='chrome.exe'`. Los huerfanos que hay que matar pasaron a llamarse
+    `msedge.exe`, asi que la consulta devolvia siempre 0 y la limpieza entre
+    reintentos dejo de existir sin que nada lo dijera: el sintoma de no hacer
+    nada y el de no encontrar nada son el mismo. De ahi que ahora el canal entre
+    por parametro y, si no se pasa, se busquen TODOS los nombres conocidos --
+    que sigue siendo seguro, porque lo que acota es la ruta del perfil, no el
+    nombre.
+
+    Si PowerShell no esta o falla, se devuelve 0 y se sigue: es una limpieza
+    oportunista, y perder un reintento es mejor que abortar el dia por no
+    haber podido consultar la lista de procesos.
+    """
+    perfil = str(Path(ruta_perfil))
+    if canal is None:
+        nombres = sorted(set(PROCESOS_POR_CANAL.values()))
+    else:
+        nombres = [proceso_de(canal)]
+    filtro = " or ".join(f"Name='{n}'" for n in nombres)
+    guion = (
+        "$p = $env:PERFIL_AUTOMATIZACION; "
+        f'$v = @(Get-CimInstance Win32_Process -Filter "{filtro}" | '
+        "Where-Object { $_.CommandLine -like \"*$p*\" }); "
+        "foreach ($x in $v) { Stop-Process -Id $x.ProcessId -Force "
+        "-ErrorAction SilentlyContinue }; "
+        "$v.Count"
+    )
+    entorno = dict(os.environ, PERFIL_AUTOMATIZACION=perfil)
+    try:
+        salida = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", guion],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=entorno,
+        ).stdout.strip()
+        cerrados = int(salida.splitlines()[-1]) if salida else 0
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
+        log.debug("No se pudo cerrar el Chrome del perfil (%s); se sigue.", exc)
+        return 0
+    if cerrados:
+        log.info(
+            "Cerrados %d proceso(s) de %s del perfil %s.",
+            cerrados,
+            "/".join(nombres),
+            perfil,
+        )
+    return cerrados
 
 
 def resolver(cfg: Config) -> PerfilResuelto:
     """Decide el perfil a partir de la configuracion. No lo abre ni lo valida."""
     modo = (cfg.navegador_perfil or MODO_PROYECTO).strip()
+    canal = (getattr(cfg, "navegador_canal", "") or CANAL_POR_DEFECTO).strip().lower()
 
     if modo.lower() == MODO_CHROME:
+        # El perfil personal es el de CHROME. Abrirlo con Edge es exactamente lo
+        # que el .env advierte que degrada un perfil y mata el navegador al
+        # arrancar, y ademas seria sobre el navegador de diario del operador.
+        # Se para aqui en vez de dejar que reviente a medio camino.
+        if canal not in CANALES_DE_CHROME:
+            raise ErrorPerfilNavegador(
+                f"NAVEGADOR_PERFIL=chrome pide el perfil PERSONAL de Chrome, pero "
+                f"NAVEGADOR_CANAL='{canal}' abriria otro navegador sobre esa misma "
+                f"carpeta. Un perfil persistente pertenece al navegador que lo "
+                f"creo: mezclarlos lo degrada y el navegador muere al arrancar.\n"
+                f"  Opciones: NAVEGADOR_CANAL=chrome (y Chrome cerrado durante la "
+                f"corrida), o NAVEGADOR_PERFIL=proyecto con un perfil dedicado de "
+                f"'{canal}' en POWERBI_PERFIL_NAVEGADOR."
+            )
         return PerfilResuelto(
             ruta=perfil_chrome_real(),
             es_chrome_real=True,
             directorio=cfg.navegador_perfil_directorio or DIRECTORIO_PERFIL_POR_DEFECTO,
+            canal=canal,
         )
 
     if modo.lower() == MODO_PROYECTO:
@@ -131,10 +257,14 @@ def resolver(cfg: Config) -> PerfilResuelto:
                 "vacio en config/.env. Poner una ruta, o NAVEGADOR_PERFIL=chrome "
                 "para usar el perfil personal."
             )
-        return PerfilResuelto(ruta=Path(cfg.powerbi_perfil_navegador), es_chrome_real=False)
+        return PerfilResuelto(
+            ruta=Path(cfg.powerbi_perfil_navegador),
+            es_chrome_real=False,
+            canal=canal,
+        )
 
     # Una ruta explicita. Se trata como perfil dedicado: la carpeta ES el perfil.
-    return PerfilResuelto(ruta=Path(modo), es_chrome_real=False)
+    return PerfilResuelto(ruta=Path(modo), es_chrome_real=False, canal=canal)
 
 
 def exigir_disponible(perfil: PerfilResuelto) -> None:
@@ -166,13 +296,14 @@ def exigir_disponible(perfil: PerfilResuelto) -> None:
             "Ajustar NAVEGADOR_PERFIL_DIRECTORIO en config/.env."
         )
 
-    if chrome_esta_corriendo():
+    if navegador_esta_corriendo(perfil.canal):
+        exe = proceso_de(perfil.canal)
         raise ErrorPerfilNavegador(
-            "Chrome esta abierto y bloquea la carpeta de su perfil, asi que la "
-            "automatizacion no puede usarla.\n"
+            f"Chrome esta abierto ({exe}) y bloquea la carpeta de su perfil, asi "
+            "que la automatizacion no puede usarla.\n"
             "  Cerrar Chrome POR COMPLETO -- incluidas las ventanas en segundo "
             "plano y el icono de la bandeja del sistema -- y repetir.\n"
-            "  Comprobacion: en PowerShell, `Get-Process chrome` no debe "
+            f"  Comprobacion: en PowerShell, `Get-Process {exe[:-4]}` no debe "
             "devolver nada.\n"
             "  Alternativa sin cerrar nada: NAVEGADOR_PERFIL=proyecto en "
             "config/.env, que usa un perfil dedicado (hay que autenticarse la "
