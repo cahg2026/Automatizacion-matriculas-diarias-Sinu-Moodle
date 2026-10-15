@@ -1,0 +1,10 @@
+# Grupos que NO EXISTEN en SINU, declarados a mano por el dueno del proceso.
+# Formato: MATERIA/GRUPO/PERIODO[/BLOQUE/UNIDAD/PENSUM]
+# Sus filas se marcan en FUCSIA (GRUPO NO EXISTE EN SINU) sin consultarlas ni
+# procesarlas. Para deshacerlo: borrar la linea y relanzar el periodo.
+#
+# 28/09/2026 - revision manual en PACF50 por numero de grupo:
+POS01/55ES1/26ES5/B1/EMPVI/EMVIR
+POS01/55ES2/26ES5/B1/EMPVI/EMVIR
+POS01/55ES5/26ES5/B1/EMPVI/EMVIR
+POS01/55ES6/26ES5/B1/EMPVI/EMVIR

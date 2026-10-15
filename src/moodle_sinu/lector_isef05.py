@@ -178,22 +178,62 @@ def _devolver_scroll_al_origen(page: Page) -> int:
     )
 
 
+#: Cuanto se espera a que la rejilla de ISEF05 deje escribir en sus filtros.
+#:
+#: MEDIDO el 26/09/2026, y costo la verificacion previa ENTERA: los 4 grupos
+#: grandes del dia -- 165 filas, el 94% del lote -- fallaron los cuatro con
+#:
+#:     No se pudo escribir 'POS01' en el filtro input[name="cod_materia"]:
+#:     Locator.wait_for: Timeout 30000ms exceeded
+#:
+#: y el robot se puso a procesarlas una a una por ISEF07. Exactamente lo que la
+#: regla del proceso existe para evitar.
+#:
+#: Eran 30 s (`timeout_operacion_seg`) esperando solo a que el campo fuera
+#: VISIBLE. Dos cosas mal:
+#:
+#: 1. **Visible no es escribible.** SmartClient pinta el filtro y lo deja
+#:    `disabled` mientras la rejilla carga -- el mismo estado inerte que ya
+#:    conocemos de ISEF07. `fill` sobre un campo deshabilitado falla.
+#: 2. **30 s es poco** para una rejilla de un modulo que se acaba de abrir.
+#:    `lector_sinu` espera 120 s a que el filtro de cedula de ISEF07 sea
+#:    EDITABLE, por este mismo motivo y desde hace semanas.
+#:
+#: Aqui SI se espera de verdad: abrir un modulo es un trabajo en curso, no una
+#: comprobacion de si la pantalla murio. Es el caso para el que 120 s existen.
+SEG_ESPERA_FILTRO_ISEF05 = 120.0
+
+
 def _filtrar(page: Page, cfg: Config, css: str, valor: str, que: str) -> None:
     """Escribe en una caja de filtro de columna.
 
     `fill` y no clic + teclado: la capa `screenSpan` de SmartClient intercepta
     los clics de puntero. Es la misma razon por la que `filtrar_grupos_por_materia`
     lo hace asi en ISEF07.
+
+    Espera a que el campo sea EDITABLE, no solo visible: ver
+    `SEG_ESPERA_FILTRO_ISEF05`.
     """
     caja = page.locator(css).first
-    try:
-        caja.wait_for(state="visible", timeout=cfg.timeout_operacion_seg * 1000)
-        caja.fill(valor)
-    except (ErrorPlaywright, ErrorTiempoPlaywright) as exc:
-        raise ErrorConsultaIsef05(
-            f"No se pudo escribir {que} ('{valor}') en el filtro '{css}' de "
-            f"ISEF05: {exc}"
-        ) from exc
+    limite = time.monotonic() + SEG_ESPERA_FILTRO_ISEF05
+    ultimo = ""
+    while time.monotonic() < limite:
+        try:
+            if caja.is_editable():
+                caja.fill(valor)
+                return
+            ultimo = "el campo existe pero sigue DESHABILITADO"
+        except (ErrorPlaywright, ErrorTiempoPlaywright) as exc:
+            # Todavia no esta en el DOM, o la SPA repinto entre el mirar y el
+            # escribir. Las dos se resuelven volviendo a mirar.
+            ultimo = str(exc).splitlines()[0]
+        page.wait_for_timeout(1000)
+
+    raise ErrorConsultaIsef05(
+        f"No se pudo escribir {que} ('{valor}') en el filtro '{css}' de ISEF05: "
+        f"tras {SEG_ESPERA_FILTRO_ISEF05:.0f}s no acepta texto ({ultimo}). La "
+        "rejilla no llego a cargar."
+    )
 
 
 def consultar_grupo(
