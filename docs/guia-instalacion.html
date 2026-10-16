@@ -183,7 +183,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 2px solid var(--tinta)
   <dl class="datos">
     <div><dt>Tiempo</dt><dd>30 a 45 minutos</dd></div>
     <div><dt>Equipo</dt><dd>Windows 10 u 11</dd></div>
-    <div><dt>Navegador</dt><dd>Microsoft Edge</dd></div>
+    <div><dt>Navegador</dt><dd>Microsoft Edge (por defecto) o Google Chrome</dd></div>
     <div><dt>Versión de la guía</dt><dd>06/10/2026</dd></div>
   </dl>
 </header>
@@ -219,7 +219,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 2px solid var(--tinta)
         <tr><td>Google</td><td>Su cuenta institucional de Google.</td><td>Editar la carpeta de Drive <strong>REPORTES 2026</strong>. Los avisos llegan a su Google Calendar.</td></tr>
       </tbody>
     </table></div>
-    <p>Además, el computador debe tener Microsoft Edge (viene con Windows) y quedarse encendido, con su sesión de Windows abierta, en el horario del proceso.</p>
+    <p>Además, el computador debe tener un navegador compatible: Microsoft Edge (viene con Windows y es el configurado por defecto) o Google Chrome, que se elige con <code class="en-linea">NAVEGADOR_CANAL</code>, y quedarse encendido, con su sesión de Windows abierta, en el horario del proceso.</p>
     <label class="hecho"><input type="checkbox" id="hecho-1" data-paso="1"> Tengo las tres cuentas</label>
   </div>
 </article>
@@ -310,7 +310,7 @@ MODO_SIMULACION=true</div>
   <div class="numeral" aria-hidden="true">5</div>
   <div class="cuerpo">
     <div class="cabeza"><h2>Inicie sesión una sola vez</h2><span class="min">10 min</span></div>
-    <p>El robot usa un Edge propio que recuerda las sesiones. Hay que entrar a mano una vez; después entra solo.</p>
+    <p>El robot usa un perfil propio del navegador (Edge por defecto) que recuerda las sesiones. Hay que entrar a mano una vez; después entra solo.</p>
     <div class="comando">
       <span class="para">Primero Google. Se abre Edge en Drive y tiene 5 minutos para iniciar sesión con su cuenta institucional. Cuando vea sus archivos, cierre la ventana:</span>
       <div class="linea-cmd"><code>.venv\Scripts\python.exe scripts\probar_perfil.py --iniciar-sesion</code><button type="button">Copiar</button></div>

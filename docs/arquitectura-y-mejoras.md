@@ -38,7 +38,7 @@ Importa tenerlo claro porque las dos mitades se comportan de forma muy distinta,
 
 | Sistema | Cuenta | Quién la tiene | Cómo se comporta |
 |---|---|---|---|
-| **Power BI** | `cunbre@cun.edu.co`, **del área y compartida** | Todo el equipo, ya guardada y abierta en sus equipos | Estable. No es el punto frágil |
+| **Power BI** | Cuenta **del área y compartida** (se pide al responsable del proceso) | Todo el equipo, ya guardada y abierta en sus equipos | Estable. No es el punto frágil |
 | **SINU** | **Personal de cada operador** (`SINU_USUARIO` / `SINU_PASSWORD` en su propio `.env`) | Solo su dueño | Cada matrícula modificada queda **auditada a su nombre** |
 | **Google** (Drive, Calendar) | **Personal de cada operador** | Solo su dueño | La más frágil: caduca sola y exige 2FA a mano (incidentes nº 8 y nº 12) |
 

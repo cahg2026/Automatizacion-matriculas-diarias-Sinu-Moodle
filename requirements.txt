@@ -16,9 +16,10 @@ openpyxl==3.1.5
 et_xmlfile==2.0.0           # dependencia de openpyxl
 
 # --- RPA sobre Power BI, SINU y Google Drive (no hay API utilizable) ---
-# Usa el Microsoft Edge INSTALADO (NAVEGADOR_CANAL=msedge), asi que no hace
-# falta `playwright install`. Drive se maneja por navegador porque la
-# organizacion no concede acceso a Google Cloud Console.
+# Admite varios navegadores (NAVEGADOR_CANAL en config/.env). Con Edge o Chrome
+# INSTALADOS (msedge / chrome) no hace falta `playwright install`; solo con
+# 'chromium', el empaquetado por Playwright. Drive se maneja por navegador
+# porque la organizacion no concede acceso a Google Cloud Console.
 playwright==1.47.0
 greenlet==3.0.3             # dependencia de playwright
 pyee==12.0.0                # dependencia de playwright

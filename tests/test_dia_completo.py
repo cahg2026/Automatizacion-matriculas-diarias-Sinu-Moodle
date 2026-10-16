@@ -153,12 +153,12 @@ class TestUrlDeSheet:
     def test_la_encuentra_en_una_linea_de_log(self):
         salida = (
             "2026-09-08 10:15:13 INFO subidor_drive Sheet abierto en una pestana: "
-            "https://docs.google.com/spreadsheets/d/1lEPF0h7J3fYLtXeAIwexGIU33Vmq6J_0byYv3iA_3Zk"
+            "https://docs.google.com/spreadsheets/d/1HojaDeEjemploFicticia0000000000000000000000"
             "/edit?gid=1000000105#gid=1000000105"
         )
         assert dc.url_de_sheet(salida) == (
             "https://docs.google.com/spreadsheets/d/"
-            "1lEPF0h7J3fYLtXeAIwexGIU33Vmq6J_0byYv3iA_3Zk"
+            "1HojaDeEjemploFicticia0000000000000000000000"
         )
 
     def test_recorta_lo_que_sobra(self):

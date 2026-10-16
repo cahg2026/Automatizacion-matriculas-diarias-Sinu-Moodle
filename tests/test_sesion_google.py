@@ -26,7 +26,7 @@ class TestSesionViva:
     def test_una_carpeta_de_drive_tampoco(self):
         assert (
             pide_iniciar_sesion(
-                "https://drive.google.com/drive/folders/1P4tdPPMCtdZofHtGysBOiUz"
+                "https://drive.google.com/drive/folders/1CarpetaDeEjemplo0000000"
             )
             is None
         )

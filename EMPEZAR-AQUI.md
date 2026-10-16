@@ -10,21 +10,26 @@ final, y solo si usted lo pide expresamente.
 
 ---
 
-## Antes de empezar: pida estas dos cosas
+## Antes de empezar: pida estas cosas
 
 Escríbale a la persona que le compartió el proyecto y pídale:
 
-1. **La contraseña de Power BI** (la cuenta `cunbre@cun.edu.co`, que es del
-   área y todos comparten).
-2. **Que le den permiso de escritura** en la carpeta de Google Drive
+1. **El usuario y la contraseña de Power BI.** Es una cuenta del área que todos
+   comparten.
+2. **La dirección (URL) del informe de Power BI** `ValidacionMoodle`.
+3. **Que le den permiso de escritura** en la carpeta de Google Drive
    `REPORTES 2026`, con el correo de Google que usted va a usar.
 
-Sin esas dos cosas el proceso no puede terminar. Todo lo demás ya viene puesto.
+Los dos primeros datos no vienen en el proyecto a propósito: el repositorio es
+público y ahí no se publican cuentas ni contraseñas. Sin estas tres cosas el
+proceso no puede terminar.
 
 Y asegúrese de tener:
 
-- **Microsoft Edge** instalado. Viene con Windows; la automatización trabaja
-  con Edge desde el 24/09/2026 (con Chrome la descarga de Power BI fallaba).
+- **Un navegador compatible.** La automatización funciona con **Microsoft
+  Edge** (viene con Windows y es el que trae configurado) o con **Google
+  Chrome**. Para usar otro, se cambia una línea en `config\.env`
+  (`NAVEGADOR_CANAL`); no hace falta tocar el programa.
 - **Su usuario y contraseña de SINU**, con permiso para entrar al módulo
   **ISEF07**. Si no sabe si lo tiene, el programa se lo dirá claramente.
 
@@ -103,31 +108,39 @@ Al final debe decir algo como **`539 passed`**. Lo que importa no es el número
 .venv\Scripts\python.exe scripts\primera_vez.py
 ```
 
-2. El programa le dirá que faltan **4 datos**. Ahora los va a poner.
+2. El programa le dirá que faltan **6 datos**. Ahora los va a poner.
 3. Copie y pegue esto para abrir el archivo:
 
 ```
 notepad config\.env
 ```
 
-4. Se abre el Bloc de notas. Busque estas **cuatro líneas** y escriba el valor
+4. Se abre el Bloc de notas. Busque estas **seis líneas** y escriba el valor
    **justo después del signo igual, sin espacios**:
 
 | Línea | Qué escribir |
 |---|---|
+| `POWERBI_USUARIO=` | El usuario de Power BI que le pasaron |
 | `POWERBI_PASSWORD=` | La contraseña de Power BI que le pasaron |
+| `POWERBI_URL_INFORME=` | La dirección del informe que le pasaron |
 | `SINU_USUARIO=` | **Su** usuario de SINU |
 | `SINU_PASSWORD=` | **Su** contraseña de SINU |
-| `POWERBI_PERFIL_NAVEGADOR=` | La carpeta donde Edge guardará las sesiones de la automatización. Use `C:\Users\<su usuario de Windows>\.playwright-perfil-msedge`. **No la ponga dentro de OneDrive** |
+| `POWERBI_PERFIL_NAVEGADOR=` | La carpeta donde el navegador guardará las sesiones de la automatización, por ejemplo `C:\Users\<su usuario de Windows>\.playwright-perfil-msedge`. **No la ponga dentro de OneDrive** |
 
-Debe quedar así (con sus datos reales):
+Debe quedar así (con sus datos reales; estos son de ejemplo):
 
 ```
+POWERBI_USUARIO=cuenta.del.area@ejemplo.edu.co
 POWERBI_PASSWORD=LaQueLePasaron
+POWERBI_URL_INFORME=https://app.powerbi.com/groups/...
 SINU_USUARIO=1234567890
 SINU_PASSWORD=SuContraseña
 POWERBI_PERFIL_NAVEGADOR=C:\Users\su_usuario\.playwright-perfil-msedge
 ```
+
+> Si usa Chrome en lugar de Edge, cambie también `NAVEGADOR_CANAL=msedge` por
+> `NAVEGADOR_CANAL=chrome` y use otra carpeta de perfil
+> (`.playwright-perfil-chrome`). Cada navegador necesita la suya.
 
 5. **Guarde** con `Ctrl + S` y cierre el Bloc de notas.
 
@@ -151,11 +164,11 @@ páginas por usted; **usted solo escribe sus contraseñas**.
 .venv\Scripts\python.exe scripts\primera_vez.py
 ```
 
-2. Se abrirá **Edge** y pasará por cuatro páginas, una por una:
+2. Se abrirá el navegador configurado (**Edge**, si no lo cambió) y pasará por cuatro páginas, una por una:
 
 | | Con qué cuenta entrar |
 |---|---|
-| **Power BI** | La cuenta del área (`cunbre@cun.edu.co`) |
+| **Power BI** | La cuenta del área que le pasaron |
 | **SINU** | **La suya** |
 | **Google Drive** | **La suya** |
 | **Google Calendar** | **La suya** |
