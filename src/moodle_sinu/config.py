@@ -125,8 +125,10 @@ class Config:
     'REPORTE ' (con espacio final, que se ignora al comparar).
 
     Solo desempata cuando la pagina tiene mas de un visual tabular; el
-    localizador real es `aria-roledescription="Tabla"`. Dejarlo vacio toma el
-    primer visual tabular que haya."""
+    localizador real es el `aria-roledescription` del visual, cuyo nombre
+    cambia (el 05/10/2026 paso de "Tabla" a "Objeto visual de tabla"): las
+    formas conocidas estan en `ROLEDESC_TABULARES` (selectores_powerbi.py).
+    Dejarlo vacio toma el primer visual tabular que haya."""
 
     powerbi_termino_busqueda: str = "validacion"
     """Solo se usa si POWERBI_URL_INFORME esta vacio."""
@@ -142,15 +144,18 @@ class Config:
     headless arranca en ingles y la corrida del 21/08/2026 11:22 fallo por eso
     mientras la misma corrida con ventana funcionaba."""
     navegador_canal: str = "chrome"
-    """Canal de Chromium: 'chrome' abre el Chrome instalado; 'chromium' el
-    empaquetado con Playwright.
+    """Canal de Chromium: 'msedge' abre Edge; 'chrome' el Chrome instalado;
+    'chromium' el empaquetado con Playwright. Cualquiera de los dos primeros
+    sirve: el que este instalado y con el que se hayan iniciado las sesiones.
+    (La plantilla config/.env.example propone 'msedge'; este valor por defecto
+    solo aplica si NAVEGADOR_CANAL falta del .env.)
 
     Tiene que ser el MISMO en toda la automatizacion y en la grabacion, porque
-    comparten POWERBI_PERFIL_NAVEGADOR. Mezclar versiones sobre un perfil hace
-    que Chrome intente 'degradarlo' y el navegador muera al arrancar
+    comparten POWERBI_PERFIL_NAVEGADOR. Mezclar navegadores o versiones sobre
+    un perfil hace que el navegador intente 'degradarlo' y muera al arrancar
     (comprobado el 21/08/2026: el perfil quedo con Snapshots.CHROME_DELETE y
-    'Target page, context or browser has been closed'). Si se cambia, hay que
-    empezar con un perfil nuevo."""
+    'Target page, context or browser has been closed'). Si se cambia de
+    navegador, hay que empezar con un perfil nuevo (una carpeta por navegador)."""
 
     navegador_compat_rdp: bool = False
     """Argumentos de compatibilidad con escritorio remoto (--disable-gpu y
@@ -175,9 +180,10 @@ class Config:
     automatice su directorio de datos por defecto.
 
     El veto es al DIRECTORIO, no al contenido, asi que el valor por defecto es
-    'proyecto' sobre una carpeta **sembrada** desde el perfil personal con
-    `scripts/sembrar_perfil.py`: de ahi salen los 46 favoritos y los accesos
-    directos. Ver `siembra_perfil` para que viaja y que no.
+    'proyecto': una carpeta DEDICADA a la automatizacion (POWERBI_PERFIL_NAVEGADOR)
+    donde se inicia sesion una sola vez con `scripts/primera_vez.py`. Sembrarla
+    desde el perfil personal (`scripts/sembrar_perfil.py`) es opcional y solo
+    trae favoritos: las cookies cifradas no viajan. Ver `siembra_perfil`.
 
     'chrome' se conserva porque es lo correcto en versiones que si lo admitan;
     `scripts/probar_perfil.py` dice en diez segundos cual es el caso."""
@@ -201,14 +207,12 @@ class Config:
     """Id de la carpeta raiz en Drive. Se prefiere al nombre: es inequivoco y
     no depende de que no haya dos carpetas homonimas."""
 
-
     # --- comportamiento ---
     modo_simulacion: bool = True
     """Si True, nunca se ejecuta 'Vincular grupos matriculados' en SINU."""
 
     deduplicar_exactos: bool = True
     timeout_operacion_seg: int = 30
-    reintentos_login: int = 1
 
     timeout_render_seg: int = 120
     """Plazo para lo que Power BI renderiza en el servidor: el SSO y el visual
@@ -221,15 +225,17 @@ class Config:
     exportacion_reintentos: int = 5
     """Cuantas veces se intenta la etapa 2 antes de rendirse.
 
-    No es un timeout: es para caidas del propio Chrome. El proceso principal
-    del navegador revienta de vez en cuando justo al arrancar la descarga
-    (0xC0000005 dentro de chrome.dll; volcados del 18, 22 y 23/09/2026), y
-    hasta entonces un solo tropiezo ahi costaba el dia entero con 0 matriculas
-    procesadas. Cada intento abre un navegador nuevo."""
+    No es un timeout: es para fallos transitorios del navegador o de Power BI.
+    Antes el proceso del navegador reventaba al arrancar la descarga
+    (0xC0000005 dentro de chrome.dll; volcados del 18, 22 y 23/09/2026) y un
+    solo tropiezo costaba el dia entero. Desde el 06/10/2026 el .xlsx se toma
+    de la respuesta de red, sin gestor de descargas, pero se conservan los
+    reintentos. Un cambio de forma del informe (p. ej. el del 05/10) NO se
+    arregla reintentando. Cada intento abre un navegador nuevo."""
 
     exportacion_espera_seg: int = 90
     """Pausa entre intentos de la etapa 2. Da tiempo a que Windows termine de
-    soltar el Chrome que acaba de caerse antes de abrir el siguiente."""
+    soltar el navegador que acaba de caerse antes de abrir el siguiente."""
 
     # --- Avisos (flujo desatendido de las 9:00) ---
     notificar_webhook: str | None = None
@@ -272,9 +278,10 @@ class Config:
     tenga margen de dispararse. Un recordatorio cuyo momento ya paso no salta,
     asi que a 0 el aviso puede no llegar nunca a la pantalla."""
 
-    # El cerrojo del tablero ya no tiene ventana de gracia (28/09/2026): un
-    # tablero viejo pausa el dia en la primera lectura. CERROJO_ESPERA_MIN y
-    # CERROJO_INTERVALO_MIN se ignoran si siguen en un .env antiguo.
+    notificar_pc: bool = True
+    """Si una alerta no salio por ningun canal, abrir una ventana de
+    PowerShell en el equipo con el aviso. Pedido el 16/10/2026: cuando Google
+    pide verificacion, Calendar cae con la sesion y el aviso no llegaba."""
 
     @property
     def tiene_canal_de_aviso(self) -> bool:
@@ -319,7 +326,6 @@ class Config:
             modo_simulacion=_bool("MODO_SIMULACION", True),
             deduplicar_exactos=_bool("DEDUPLICAR_EXACTOS", True),
             timeout_operacion_seg=int(os.getenv("TIMEOUT_OPERACION_SEG", "30")),
-            reintentos_login=int(os.getenv("REINTENTOS_LOGIN", "1")),
             timeout_render_seg=int(os.getenv("TIMEOUT_RENDER_SEG", "120")),
             timeout_descarga_seg=int(os.getenv("TIMEOUT_DESCARGA_SEG", "300")),
             exportacion_reintentos=int(os.getenv("EXPORTACION_REINTENTOS", "5")),
@@ -336,6 +342,7 @@ class Config:
             notificar_calendar_adelanto_min=int(
                 os.getenv("NOTIFICAR_CALENDAR_ADELANTO_MIN", "2")
             ),
+            notificar_pc=_bool("NOTIFICAR_PC", True),
         )
 
 

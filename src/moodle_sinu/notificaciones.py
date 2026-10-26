@@ -16,6 +16,10 @@ Tres canales, los tres por configuracion:
                       webhook ya lleva el destino dentro.
   NOTIFICAR_SMTP_*    Correo. Necesita servidor, usuario y contrasena.
 
+Y uno de ultimo recurso, NOTIFICAR_PC: si una alerta no salio por ningun
+canal (p. ej. Google pide verificacion y Calendar cae con la sesion), se abre
+una ventana de PowerShell en el equipo con el aviso.
+
 Y un respaldo que SIEMPRE funciona: `logs/avisos/` con un archivo por aviso.
 No sustituye a la notificacion -- nadie mira una carpeta a las 9:05 -- pero
 garantiza que el aviso quede escrito aunque el canal falle, y que el motivo
@@ -32,6 +36,7 @@ import json
 import logging
 import smtplib
 import ssl
+import subprocess
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -371,6 +376,24 @@ def _guardar_respaldo(aviso: Aviso, resultado: ResultadoEnvio) -> Path:
     return destino
 
 
+def _abrir_ventana_pc(archivo: Path) -> None:
+    """Abre una consola de PowerShell que muestra `archivo` y no se cierra.
+
+    Lee el respaldo ya escrito en vez de pasar el texto por la linea de
+    ordenes: asi no hay comillas ni acentos que escapar. No es un .ps1 a
+    proposito (Kaspersky bloqueo dia_completo.ps1 al cargarlo).
+    """
+    ruta = str(archivo).replace("'", "''")
+    orden = (
+        "$Host.UI.RawUI.WindowTitle = 'AVISO flujo Moodle-SINU'; "
+        f"Get-Content -LiteralPath '{ruta}' -Encoding UTF8"
+    )
+    subprocess.Popen(
+        ["powershell.exe", "-NoExit", "-NoProfile", "-Command", orden],
+        creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+    )
+
+
 def enviar(aviso: Aviso, cfg) -> ResultadoEnvio:
     """Manda el aviso por los canales configurados y deja copia en disco.
 
@@ -420,6 +443,18 @@ def enviar(aviso: Aviso, cfg) -> ResultadoEnvio:
         r.respaldo = _guardar_respaldo(aviso, r)
     except OSError as exc:  # noqa: BLE001
         r.fallos.append(f"respaldo en disco: {exc}")
+
+    # El 16/10/2026 Google pidio reverificar la identidad: el paso 0 lo vio,
+    # pero el aviso tambien iba por Calendar, que usa esa misma sesion, y no
+    # llego a nadie. Una alerta que no salio por ningun canal se pone delante
+    # en el PC, en una ventana de PowerShell que queda abierta hasta cerrarla.
+    if aviso.critico and not r.enviado and cfg.notificar_pc and r.respaldo:
+        try:
+            _abrir_ventana_pc(r.respaldo)
+            r.canales.append("ventana en el PC")
+        except OSError as exc:
+            r.fallos.append(f"ventana en el PC: {exc}")
+            log.error("No se pudo abrir la ventana de aviso: %s", exc)
 
     nivel = logging.ERROR if aviso.critico else logging.INFO
     log.log(nivel, "%s -- %s", aviso.asunto, r.resumen())

@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -370,7 +371,14 @@ def pide_iniciar_sesion(url: str) -> str | None:
     return "Google redirigio a accounts.google.com (pantalla de identificacion)."
 
 
-def comprobar_sesion_google(context, cfg: Config, url: str | None = None) -> SesionGoogle:
+def comprobar_sesion_google(
+    context,
+    cfg: Config,
+    url: str | None = None,
+    *,
+    gracia_seg: float = 180,
+    pausa_seg: float = 20,
+) -> SesionGoogle:
     """Comprueba la sesion NAVEGANDO, no mirando cookies.
 
     Existe porque contar cookies engana, y el 08/09/2026 costo una corrida: el
@@ -381,7 +389,30 @@ def comprobar_sesion_google(context, cfg: Config, url: str | None = None) -> Ses
 
     La presencia de una cookie dice que el navegador la guarda. No dice que el
     servidor la siga aceptando. Lo unico que lo dice es pedirle una pagina.
+
+    Una redireccion al login es definitiva y se devuelve al momento. Que Drive
+    no conteste NO lo es: se reintenta durante `gracia_seg` (los mismos 180 s
+    que `SEG_GRACIA_RED` en subidor_drive). El 16/10/2026 un
+    unico timeout de 30 s a las 9:00 tumbo el dia entero con la sesion sana
+    (la URL final seguia en my-drive y minutos despues Drive daba 200).
     """
+    inicio = time.monotonic()
+    intento = 1
+    while True:
+        ses = _comprobar_una_vez(context, cfg, url)
+        if ses.viva or not ses.detalle.startswith("no se pudo comprobar"):
+            return ses
+        if time.monotonic() - inicio + pausa_seg >= gracia_seg:
+            return ses
+        log.warning(
+            "Intento %d sin respuesta de Google; reintento en %.0f s (gracia %.0f s).",
+            intento, pausa_seg, gracia_seg,
+        )
+        time.sleep(pausa_seg)
+        intento += 1
+
+
+def _comprobar_una_vez(context, cfg: Config, url: str | None = None) -> SesionGoogle:
     destino = url or URL_PRUEBA_SESION
     plazo = max(getattr(cfg, "timeout_operacion_seg", 30), 30) * 1000
     page = context.new_page()
