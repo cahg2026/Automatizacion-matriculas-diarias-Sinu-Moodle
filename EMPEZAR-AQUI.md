@@ -195,6 +195,33 @@ en esa página.
 > Google puede volver a pedirle que confirme que es usted; si pasa, repita este
 > paso y listo.
 
+### Dos ajustes obligatorios (se hacen una sola vez)
+
+Estos dos ajustes no los hace el programa: se hacen a mano, y si faltan el
+flujo falla.
+
+**A. En SINU: el perfil debe ser `LMS`.**
+
+1. Abra https://sigwt.cun.edu.co/sgacampus/ con **su** cuenta.
+2. Arriba a la derecha, en el desplegable **Perfil**, elija **`LMS`**.
+   La empresa debe ser *CORPORACION UNIFICADA NACIONAL DE EDUCACION SUPERIOR*.
+3. En el menú de la izquierda deben verse los módulos **isef05, isef07,
+   matf88**, etc. Si no aparecen, el perfil no es el correcto.
+
+**B. En Google Drive: convertir los archivos subidos.**
+
+Sin esto, el reporte sube en un formato que no es el esperado y da error de
+formato.
+
+1. Abra Google Drive con **la misma cuenta de Google** que usa la
+   automatización.
+2. Haga clic en el icono de **Configuración ⚙️** (arriba a la derecha) y
+   elija **Configuración**.
+3. En la sección **General**, busque **Convertir archivos subidos**.
+4. Marque **«Convertir los archivos subidos al formato del Editor de
+   Documentos de Google»**.
+5. Haga clic en **Listo**.
+
 ---
 
 ## Paso 6 — Probar sin tocar nada
@@ -212,6 +239,40 @@ Tarda **entre 1 y 3 horas**. Puede dejarlo corriendo y seguir con lo suyo, pero
 Al terminar verá un resumen con cuántas matrículas habría procesado.
 
 **Si llegó hasta aquí, ya está todo listo.**
+
+> **No cierre la ventana ni pulse Ctrl+C mientras corre.** El PASO 2 (descarga
+> de Power BI) puede quedarse varios minutos sin escribir nada: es normal.
+> Si lo interrumpe, el programa envía una alerta de «Flujo incompleto» que no
+> corresponde a un error real.
+
+---
+
+## Paso 7 — Procesar de verdad
+
+Cuando el ensayo del Paso 6 salió bien y **acordó con el equipo quién procesa
+hoy** (solo una persona al día), el mismo comando con una palabra más modifica
+las matrículas:
+
+```
+.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad
+```
+
+Al arrancar, mire el encabezado: **ya no debe decir `Modo: SIMULACION`**. Si lo
+sigue diciendo, deténgalo. Si no dice nada de simulación, está escribiendo en
+SINU.
+
+---
+
+## Mantener actualizado el programa
+
+El proyecto se corrige con frecuencia. Si el flujo falla con un error que en
+otro equipo no aparece, lo primero es actualizar:
+
+- **Con git:** `git pull` dentro de la carpeta del proyecto.
+- **Con ZIP:** descargue el ZIP nuevo, extráigalo, seleccione **todo su
+  contenido** y péguelo encima de su carpeta, eligiendo **Reemplazar**. Su
+  `.venv`, `config\.env` y `logs` no se pierden. **No copie el `.venv` a otra
+  carpeta**: se daña.
 
 ---
 
@@ -302,7 +363,10 @@ Dos reglas que conviene tener presentes:
 | `self-signed certificate` | Su antivirus revisa el tráfico. Ejecute `scripts\primera_vez.py`: le da el comando exacto para arreglarlo |
 | `Ya hay un reporte de hoy` | Otra persona ya procesó hoy. No hay nada que hacer |
 | `El tablero no se actualizó hoy` | Los datos aún no estaban listos. No es un error: el programa se detuvo a propósito |
-| `no se encontró el módulo ISEF07` | Su cuenta de SINU no tiene ese permiso. Hay que pedirlo |
+| `no se encontró el módulo ISEF07` | El perfil de SINU no es `LMS` (ver «Dos ajustes obligatorios») o su cuenta no tiene ese permiso. Si el perfil ya es `LMS`, pida el permiso |
+| Error de formato al subir el reporte a Drive | Falta activar «Convertir archivos subidos» en Drive (ver «Dos ajustes obligatorios») |
+| `no tiene ningun visual de tabla o matriz` (PASO 2) | Power BI renombró la tabla y su copia del programa es vieja. Actualícela (ver «Mantener actualizado el programa») |
+| `Interrumpido a mano` y alerta «Flujo incompleto» | Se cerró la ventana o se pulsó Ctrl+C. No es un error real: vuelva a lanzar y no la toque |
 
 **Para revisar todo de una vez**, sin que abra nada:
 
@@ -324,6 +388,7 @@ py -3.11 -m venv .venv                                   (una vez)
 .venv\Scripts\python.exe scripts\primera_vez.py          (puesta en marcha)
 .venv\Scripts\python.exe scripts\primera_vez.py --revisar (revisar)
 .venv\Scripts\python.exe scripts\dia_completo.py         (ensayo, no escribe)
+.venv\Scripts\python.exe scripts\dia_completo.py --ejecutar-de-verdad   (el día real)
 ```
 
 Y para el día a día: **doble clic en `Flujo diario.bat`**.
