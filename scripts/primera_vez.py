@@ -37,6 +37,7 @@ import shutil
 import ssl
 import socket
 import sys
+import time
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -51,6 +52,7 @@ from moodle_sinu.config import (  # noqa: E402
     asegurar_directorios,
 )
 from moodle_sinu.perfil_navegador import (  # noqa: E402
+    cerrar_chrome_del_perfil,
     chrome_esta_corriendo,
     pide_iniciar_sesion,
     resolver,
@@ -248,6 +250,35 @@ def _url_drive(cfg: Config) -> str:
     return "https://drive.google.com/drive/my-drive"
 
 
+def _reabrir_navegador(pw, cfg: Config, cerrar):
+    """Vuelve a abrir el navegador con el MISMO perfil. Devuelve (contexto, cerrar).
+
+    Hace falta porque el PASO 4 se apoya en que el operador cierre la pestana de
+    cada sitio, y cerrar la VENTANA es igual de natural -- hasta el 28/10/2026 el
+    propio asistente lo pedia asi por escrito. Al hacerlo muere el contexto
+    entero y la pestana siguiente reventaba con:
+
+        TargetClosedError: Target page, context or browser has been closed
+
+    ...dejando el asistente a medias con las sesiones ya hechas perdidas de
+    vista. Reabrir no cuesta nada: el perfil es persistente, asi que lo que ya
+    se autentico sigue dentro.
+
+    Se limpia antes cualquier proceso huerfano del perfil: Windows los deja un
+    rato tras cerrar la ventana, y mientras viven tienen bloqueada la carpeta.
+    """
+    try:
+        cerrar()
+    except Exception:  # noqa: BLE001
+        pass
+    perfil = resolver(cfg)
+    cerrar_chrome_del_perfil(perfil.ruta, cfg.navegador_canal)
+    time.sleep(3)
+    from moodle_sinu.navegador import abrir_contexto
+
+    return abrir_contexto(pw, cfg, headless=False)
+
+
 def autenticar(cfg: Config, solo_revisar: bool) -> bool:
     titulo("PASO 4 - Sus sesiones en cada sitio")
 
@@ -266,20 +297,38 @@ def autenticar(cfg: Config, solo_revisar: bool) -> bool:
         ("Google Calendar", "https://calendar.google.com/calendar/u/0/r"),
     ]
 
-    print("  Se abrira una ventana por cada sitio. Entre con SUS credenciales.")
+    print("  Se abrira UNA PESTANA por cada sitio. Entre con SUS credenciales.")
     print("  La sesion queda guardada en el perfil: solo hay que hacerlo una vez.")
-    print(f"  Hay hasta {SEG_ESPERA_LOGIN}s por sitio; cerrar la ventana al acabar.")
+    print(f"  Hay hasta {SEG_ESPERA_LOGIN}s por sitio.")
+    print()
+    print("  IMPORTANTE: al acabar con un sitio, cierre SOLO SU PESTANA (Ctrl+W).")
+    print("  Si cierra la VENTANA entera se lleva el navegador por delante; el")
+    print("  asistente lo reabre solo, pero se pierde tiempo. La pestana vacia")
+    print("  'about:blank' del arranque no estorba: dejarla donde esta.")
 
     resultados: list[tuple[str, bool, str]] = []
     with sync_playwright() as pw:
         # Con ventana, obligatorio: hay que poder teclear la contrasena.
         contexto, cerrar = abrir_contexto(pw, cfg, headless=False)
+        # En un dict porque `nueva_pestana` los reemplaza al reabrir.
+        estado = {"contexto": contexto, "cerrar": cerrar}
+
+        def nueva_pestana():
+            """Una pestana nueva, reabriendo el navegador si ya no hay ninguno."""
+            try:
+                return estado["contexto"].new_page()
+            except Exception:  # noqa: BLE001 - el navegador se cerro; se reabre
+                print("      (se cerro la ventana entera; reabriendo el navegador)")
+                ctx, cerr = _reabrir_navegador(pw, cfg, estado["cerrar"])
+                estado["contexto"], estado["cerrar"] = ctx, cerr
+                return ctx.new_page()
+
         try:
             for nombre, url in destinos:
                 print()
                 print(f"  --- {nombre} ---")
                 print(f"      {url}")
-                page = contexto.new_page()
+                page = nueva_pestana()
                 try:
                     page.goto(url, timeout=60000, wait_until="domcontentloaded")
                     page.wait_for_timeout(3000)
@@ -304,7 +353,7 @@ def autenticar(cfg: Config, solo_revisar: bool) -> bool:
             print("  redirige al login. Es la unica prueba que no enganna.")
             print()
             for nombre, url in destinos:
-                page = contexto.new_page()
+                page = nueva_pestana()
                 try:
                     page.goto(url, timeout=60000, wait_until="domcontentloaded")
                     page.wait_for_timeout(4000)
@@ -323,7 +372,7 @@ def autenticar(cfg: Config, solo_revisar: bool) -> bool:
                     except Exception:  # noqa: BLE001
                         pass
         finally:
-            cerrar()
+            estado["cerrar"]()
 
     print()
     todo_bien = True
